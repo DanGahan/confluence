@@ -60,3 +60,10 @@ final class MockURLProtocol: URLProtocol {
         return data
     }
 }
+
+extension URLRequest {
+    func status(_ code: Int) -> HTTPURLResponse {
+        HTTPURLResponse(url: url!, statusCode: code, httpVersion: nil, headerFields: nil)!
+    }
+    func ok() -> HTTPURLResponse { status(200) }
+}
