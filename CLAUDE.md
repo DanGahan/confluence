@@ -56,7 +56,10 @@ Rules:
 
 ## Commands
 
+The Xcode project is generated from `project.yml` and is **not** committed. After cloning (and after editing `project.yml`), run `xcodegen generate` before any `xcodebuild` command. Install the tool with `brew install xcodegen`.
+
 ```bash
+xcodegen generate                               # (re)create Confluence.xcodeproj from project.yml
 swift test --package-path ConfluenceKit        # unit + integration (fast, run constantly)
 xcodebuild -scheme Confluence build            # full app build
 xcodebuild -scheme Confluence test             # includes UI smoke tests (slow, pre-merge)
