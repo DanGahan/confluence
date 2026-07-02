@@ -3,7 +3,9 @@ import ConfluenceKit
 
 struct SettingsView: View {
     @Environment(BlueskyAccountStore.self) private var bluesky
-    @State private var showingLogin = false
+    @Environment(MastodonAccountStore.self) private var mastodon
+    @State private var showingBlueskyLogin = false
+    @State private var showingMastodonLogin = false
 
     var body: some View {
         Form {
@@ -14,15 +16,23 @@ struct SettingsView: View {
                         try? bluesky.logOut()
                     }
                 } else {
-                    Button("Sign In to Bluesky…") { showingLogin = true }
+                    Button("Sign In to Bluesky…") { showingBlueskyLogin = true }
                 }
             }
-            // F2 adds a Mastodon section here.
+            Section("Mastodon") {
+                if let session = mastodon.session {
+                    LabeledContent("Server", value: session.host)
+                    Button("Sign Out", role: .destructive) {
+                        Task { try? await mastodon.logOut() }
+                    }
+                } else {
+                    Button("Sign In to Mastodon…") { showingMastodonLogin = true }
+                }
+            }
         }
         .formStyle(.grouped)
-        .frame(width: 450, height: 220)
-        .sheet(isPresented: $showingLogin) {
-            BlueskyLoginView()
-        }
+        .frame(width: 450, height: 300)
+        .sheet(isPresented: $showingBlueskyLogin) { BlueskyLoginView() }
+        .sheet(isPresented: $showingMastodonLogin) { MastodonLoginView() }
     }
 }

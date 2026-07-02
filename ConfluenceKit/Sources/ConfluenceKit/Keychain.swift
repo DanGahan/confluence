@@ -21,6 +21,20 @@ public extension SecureStore {
     }
 }
 
+/// In-memory credential store — used for UI tests so they never touch the real Keychain
+/// (which, for unsigned/ad-hoc builds, pops a system prompt on every access).
+public final class EphemeralSecureStore: SecureStore, @unchecked Sendable {
+    private let lock = NSLock()
+    private var items: [String: Data] = [:]
+
+    public init() {}
+
+    public func set(_ data: Data, for account: String) throws { lock.withLock { items[account] = data } }
+    public func get(_ account: String) throws -> Data? { lock.withLock { items[account] } }
+    public func delete(_ account: String) throws { lock.withLock { _ = items.removeValue(forKey: account) } }
+    public func deleteAll() throws { lock.withLock { items.removeAll() } }
+}
+
 /// Thin wrapper over the Security framework for generic-password items.
 /// All credentials in Confluence live here — never in UserDefaults, files, or logs.
 /// Items are `kSecAttrAccessibleWhenUnlocked`.

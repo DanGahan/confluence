@@ -90,9 +90,3 @@ struct BlueskyAccountStoreTests {
     }
 }
 
-private extension URLRequest {
-    func ok() -> HTTPURLResponse { status(200) }
-    func status(_ code: Int) -> HTTPURLResponse {
-        HTTPURLResponse(url: url!, statusCode: code, httpVersion: nil, headerFields: nil)!
-    }
-}
