@@ -18,6 +18,17 @@ struct FeedView: View {
         "\(bluesky.session?.did ?? "-")|\(mastodon.session?.host ?? "-")"
     }
 
+    private var isScrolledAway: Bool {
+        guard let topID, let first = feed.items.first else { return false }
+        return topID != first.id
+    }
+
+    private func scrollToTop() {
+        guard let first = feed.items.first else { return }
+        withAnimation { topID = first.id }
+        Task { await feed.refresh() } // fresh-content check once at top
+    }
+
     var body: some View {
         List {
             if !feed.failedNetworks.isEmpty {
@@ -77,6 +88,13 @@ struct FeedView: View {
                     Image(systemName: "person.crop.circle")
                 }
                 .help("Accounts")
+            }
+            if isScrolledAway {
+                ToolbarItem {
+                    Button { scrollToTop() } label: { Image(systemName: "arrow.up.to.line") }
+                        .keyboardShortcut(.upArrow)
+                        .help("Scroll to Top")
+                }
             }
             ToolbarItem {
                 Button { Task { await feed.refresh() } } label: { Image(systemName: "arrow.clockwise") }
