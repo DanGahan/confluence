@@ -4,6 +4,8 @@ import Foundation
 public struct FeedItem: Identifiable, Sendable, Equatable {
     public let network: Network
     public let rawId: String
+    /// Stable author identity for follow actions: Bluesky DID, or Mastodon account id.
+    public let authorID: String
     public let authorName: String
     public let authorHandle: String
     public let avatarURL: URL?
@@ -12,13 +14,21 @@ public struct FeedItem: Identifiable, Sendable, Equatable {
     public let imageURLs: [URL]
     /// Display name of the reposter/booster, if this appeared via a repost/boost.
     public let repostedBy: String?
+    /// Whether the signed-in user already follows the author, when known at fetch time.
+    public let isFollowing: Bool
+    /// Bluesky follow-record URI (needed to unfollow); nil for Mastodon or when not following.
+    public let followURI: String?
 
     public var id: String { "\(network.rawValue):\(rawId)" }
+    /// Identity key for the author across items (follow state is tracked per author).
+    public var authorKey: String { "\(network.rawValue):\(authorID)" }
 
-    public init(network: Network, rawId: String, authorName: String, authorHandle: String,
-                avatarURL: URL?, createdAt: Date, text: String, imageURLs: [URL] = [], repostedBy: String? = nil) {
+    public init(network: Network, rawId: String, authorID: String = "", authorName: String, authorHandle: String,
+                avatarURL: URL?, createdAt: Date, text: String, imageURLs: [URL] = [], repostedBy: String? = nil,
+                isFollowing: Bool = false, followURI: String? = nil) {
         self.network = network
         self.rawId = rawId
+        self.authorID = authorID
         self.authorName = authorName
         self.authorHandle = authorHandle
         self.avatarURL = avatarURL
@@ -26,6 +36,8 @@ public struct FeedItem: Identifiable, Sendable, Equatable {
         self.text = text
         self.imageURLs = imageURLs
         self.repostedBy = repostedBy
+        self.isFollowing = isFollowing
+        self.followURI = followURI
     }
 }
 

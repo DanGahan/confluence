@@ -61,6 +61,7 @@ extension MastodonClient {
             return FeedItem(
                 network: .mastodon,
                 rawId: boostId ?? id,
+                authorID: account.id,
                 authorName: account.displayName.isEmpty ? account.acct : account.displayName,
                 authorHandle: account.acct.contains("@") ? account.acct : "\(account.acct)@\(host)",
                 avatarURL: URL(string: account.avatar),
@@ -76,10 +77,11 @@ extension MastodonClient {
     }
 
     private struct Account: Decodable {
+        let id: String
         let displayName: String
         let acct: String
         let avatar: String
-        enum CodingKeys: String, CodingKey { case acct, avatar; case displayName = "display_name" }
+        enum CodingKeys: String, CodingKey { case id, acct, avatar; case displayName = "display_name" }
     }
     private struct Media: Decodable {
         let type: String

@@ -4,6 +4,7 @@ import ConfluenceKit
 struct FeedView: View {
     @Environment(BlueskyAccountStore.self) private var bluesky
     @Environment(MastodonAccountStore.self) private var mastodon
+    @Environment(FollowStore.self) private var follows
     @State private var feed = FeedStore()
     @State private var showingBlueskyLogin = false
     @State private var showingMastodonLogin = false
@@ -44,8 +45,10 @@ struct FeedView: View {
         }
         .task(id: accountsKey) {
             feed.setFetchers(makeFetchers())
+            follows.setActions(makeFollowActions())
             await feed.refresh()
         }
+        .overlay(alignment: .bottom) { followToast }
         .toolbar {
             ToolbarItem {
                 Menu {
@@ -102,20 +105,78 @@ struct FeedView: View {
         }
         return fetchers
     }
+
+    private func makeFollowActions() -> [Network: FollowActions] {
+        var actions: [Network: FollowActions] = [:]
+        if bluesky.isLoggedIn {
+            let store = bluesky
+            let client = BlueskyClient()
+            actions[.bluesky] = FollowActions(
+                follow: { did in
+                    guard let session = await store.session else { throw BlueskyError.invalidCredentials }
+                    return try await client.follow(accessToken: session.accessJwt, repoDID: session.did, subjectDID: did)
+                },
+                unfollow: { _, followURI in
+                    guard let session = await store.session, let followURI else { return }
+                    try await client.unfollow(accessToken: session.accessJwt, followURI: followURI)
+                }
+            )
+        }
+        if let session = mastodon.session {
+            let client = MastodonClient()
+            actions[.mastodon] = FollowActions(
+                follow: { id in
+                    try await client.follow(host: session.host, accessToken: session.accessToken, accountID: id)
+                    return nil
+                },
+                unfollow: { id, _ in
+                    try await client.unfollow(host: session.host, accessToken: session.accessToken, accountID: id)
+                }
+            )
+        }
+        return actions
+    }
+
+    @ViewBuilder private var followToast: some View {
+        if let message = follows.lastError {
+            Text(message)
+                .font(.callout)
+                .padding(.horizontal, 14).padding(.vertical, 10)
+                .background(.regularMaterial, in: Capsule())
+                .padding(.bottom, 16)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .task {
+                    try? await Task.sleep(for: .seconds(3))
+                    follows.lastError = nil
+                }
+        }
+    }
 }
 
 private struct FeedRow: View {
+    @Environment(FollowStore.self) private var follows
     let item: FeedItem
+    @State private var showingProfile = false
+
+    private var isFollowing: Bool { follows.isFollowing(item) }
+    private var networkName: String { item.network == .bluesky ? "Bluesky" : "Mastodon" }
+    private var followLabel: String {
+        (isFollowing ? "Unfollow @" : "Follow @") + item.authorHandle + " (\(networkName))"
+    }
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
-            AsyncImage(url: item.avatarURL) { image in
-                image.resizable().scaledToFill()
-            } placeholder: {
-                Color.secondary.opacity(0.2)
+            Button { showingProfile = true } label: {
+                AsyncImage(url: item.avatarURL) { image in
+                    image.resizable().scaledToFill()
+                } placeholder: {
+                    Color.secondary.opacity(0.2)
+                }
+                .frame(width: 44, height: 44)
+                .clipShape(Circle())
             }
-            .frame(width: 44, height: 44)
-            .clipShape(Circle())
+            .buttonStyle(.plain)
+            .popover(isPresented: $showingProfile, arrowEdge: .trailing) { profilePopover }
 
             VStack(alignment: .leading, spacing: 4) {
                 if let repostedBy = item.repostedBy {
@@ -155,8 +216,34 @@ private struct FeedRow: View {
             }
         }
         .padding(.vertical, 4)
+        .contextMenu {
+            Button(followLabel, systemImage: isFollowing ? "person.badge.minus" : "person.badge.plus") {
+                Task { await follows.toggle(item) }
+            }
+        }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilitySummary)
+        .accessibilityAction(named: followLabel) { Task { await follows.toggle(item) } }
+    }
+
+    private var profilePopover: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                AsyncImage(url: item.avatarURL) { $0.resizable().scaledToFill() } placeholder: { Color.secondary.opacity(0.2) }
+                    .frame(width: 40, height: 40).clipShape(Circle())
+                VStack(alignment: .leading) {
+                    Text(item.authorName).fontWeight(.semibold)
+                    Text("@\(item.authorHandle)").font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            Button(followLabel, systemImage: isFollowing ? "person.badge.minus" : "person.badge.plus") {
+                Task { await follows.toggle(item) }
+                showingProfile = false
+            }
+            .buttonStyle(.borderedProminent)
+        }
+        .padding()
+        .frame(width: 260)
     }
 
     private var networkBadge: some View {

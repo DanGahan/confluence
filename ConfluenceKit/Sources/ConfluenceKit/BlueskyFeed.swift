@@ -56,13 +56,16 @@ extension BlueskyClient {
             return FeedItem(
                 network: .bluesky,
                 rawId: post.uri,
+                authorID: post.author.did,
                 authorName: post.author.displayName ?? post.author.handle,
                 authorHandle: post.author.handle,
                 avatarURL: post.author.avatar.flatMap(URL.init(string:)),
                 createdAt: createdAt,
                 text: post.record.text,
                 imageURLs: post.embed?.images?.compactMap { URL(string: $0.fullsize) } ?? [],
-                repostedBy: reason?.by?.displayName
+                repostedBy: reason?.by?.displayName,
+                isFollowing: post.author.viewer?.following != nil,
+                followURI: post.author.viewer?.following
             )
         }
     }
@@ -74,9 +77,14 @@ extension BlueskyClient {
         let embed: Embed?
     }
     private struct Author: Decodable {
+        let did: String
         let handle: String
         let displayName: String?
         let avatar: String?
+        let viewer: Viewer?
+    }
+    private struct Viewer: Decodable {
+        let following: String?
     }
     private struct Record: Decodable {
         let text: String
