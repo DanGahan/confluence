@@ -47,6 +47,16 @@ struct FeedDecodingTests {
         #expect(page.nextCursor == nil)
     }
 
+    @Test func blueskyExpiredTokenMapsToInvalidCredentials() async {
+        // AT Proto returns 400 ExpiredToken (not 401) for a stale access token.
+        let client = BlueskyClient(session: MockURLProtocol.session { request in
+            (request.status(400), #"{"error":"ExpiredToken","message":"Token has expired"}"#.data(using: .utf8)!)
+        })
+        await #expect(throws: BlueskyError.invalidCredentials) {
+            try await client.timeline(accessToken: "stale", cursor: nil)
+        }
+    }
+
     // MARK: Mastodon
 
     @Test func decodesMastodonHomeTimelineHTMLAndCursor() async throws {

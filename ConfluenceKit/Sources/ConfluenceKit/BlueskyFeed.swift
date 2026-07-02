@@ -11,7 +11,12 @@ extension BlueskyClient {
 
         let (data, response) = try await timelineData(for: request)
         guard (200..<300).contains(response.statusCode) else {
-            if response.statusCode == 401 { throw BlueskyError.invalidCredentials }
+            // AT Proto signals an expired/invalid access token with 400 ExpiredToken (not 401).
+            // Map those to .invalidCredentials so the caller refreshes and retries.
+            let xrpcError = (try? JSONDecoder().decode(XRPCErrorBody.self, from: data))?.error
+            if response.statusCode == 401 || xrpcError == "ExpiredToken" || xrpcError == "InvalidToken" || xrpcError == "AuthenticationRequired" {
+                throw BlueskyError.invalidCredentials
+            }
             throw BlueskyError.server("Bluesky timeline returned status \(response.statusCode).")
         }
         let decoded: Timeline
@@ -34,6 +39,8 @@ extension BlueskyClient {
     }
 
     // MARK: - Wire format (only the fields we render)
+
+    private struct XRPCErrorBody: Decodable { let error: String? }
 
     private struct Timeline: Decodable {
         let cursor: String?
