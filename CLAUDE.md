@@ -48,6 +48,7 @@ Rules:
 
 ## Working style
 
+- Work is tracked as GitHub issues on the [Confluence project board](https://github.com/users/DanGahan/projects/4) (states: New → In Progress → In QA → Done, plus Blocked). Pick an issue, move it to In Progress when you start, In QA when the PR is up, and note the blocker on the issue if you move it to Blocked. Use `gh` to update status.
 - Small vertical slices: one SPEC feature (or sub-bullet) per PR. Don't scaffold ahead of need.
 - Simplest implementation that satisfies the acceptance criteria; mark deliberate ceilings with a `// ponytail:` comment naming the upgrade path.
 - If a spec ambiguity blocks you, note the interpretation you chose in the PR rather than stalling.
