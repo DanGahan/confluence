@@ -12,24 +12,7 @@ struct ContentView: View {
     var body: some View {
         Group {
             if anyLoggedIn {
-                // ponytail: placeholder until F3 replaces this with the combined feed.
-                ContentUnavailableView {
-                    Label("Signed In", systemImage: "checkmark.circle")
-                } description: {
-                    VStack(spacing: 4) {
-                        if let s = bluesky.session { Text("Bluesky: @\(s.handle)") }
-                        if let s = mastodon.session { Text("Mastodon: \(s.host)") }
-                        Text("Your combined feed arrives in a later update.")
-                            .foregroundStyle(.secondary)
-                    }
-                } actions: {
-                    if !bluesky.isLoggedIn {
-                        Button("Add Bluesky Account") { showingBlueskyLogin = true }
-                    }
-                    if !mastodon.isLoggedIn {
-                        Button("Add Mastodon Account") { showingMastodonLogin = true }
-                    }
-                }
+                FeedView()
             } else {
                 ContentUnavailableView {
                     Label("No Accounts", systemImage: "person.crop.circle.badge.plus")

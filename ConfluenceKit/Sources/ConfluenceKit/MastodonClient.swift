@@ -28,11 +28,14 @@ public enum MastodonError: Error, Equatable, LocalizedError {
     case stateMismatch
     case authorizationDenied
     case tokenExchangeFailed
+    case server(String)
     case network
     case malformedResponse
 
     public var errorDescription: String? {
         switch self {
+        case .server(let message):
+            return message
         case .invalidInstance:
             return "That doesn't look like a Mastodon server. Enter a domain like mastodon.social."
         case .registrationFailed:
@@ -57,7 +60,7 @@ public struct MastodonClient: Sendable {
     public static let callbackScheme = "confluence"
     public static let scopes = "read write follow"
 
-    private let session: URLSession
+    let session: URLSession
 
     public init(session: URLSession = .shared) {
         self.session = session
