@@ -9,6 +9,10 @@ struct FeedView: View {
     @State private var showingBlueskyLogin = false
     @State private var showingMastodonLogin = false
     @State private var lastPagedTailID: String?
+    @State private var topID: String?
+    @State private var didRestore = false
+    @State private var saveTask: Task<Void, Never>?
+    private let position = FeedPositionStore()
 
     private var accountsKey: String {
         "\(bluesky.session?.did ?? "-")|\(mastodon.session?.host ?? "-")"
@@ -33,6 +37,17 @@ struct FeedView: View {
             }
         }
         .listStyle(.inset)
+        .scrollPosition(id: $topID, anchor: .top)
+        .onChange(of: topID) { _, newID in
+            // Debounce: save the topmost visible post's id after scrolling settles.
+            guard let newID else { return }
+            saveTask?.cancel()
+            saveTask = Task {
+                try? await Task.sleep(for: .milliseconds(400))
+                guard !Task.isCancelled else { return }
+                position.save(itemID: newID)
+            }
+        }
         .refreshable { await feed.refresh() }
         .overlay {
             if feed.items.isEmpty {
@@ -47,6 +62,7 @@ struct FeedView: View {
             feed.setFetchers(makeFetchers())
             follows.setActions(makeFollowActions())
             await feed.refresh()
+            await restoreScrollPosition()
         }
         .overlay(alignment: .bottom) { followToast }
         .toolbar {
@@ -78,6 +94,20 @@ struct FeedView: View {
             .font(.caption)
             .foregroundStyle(.secondary)
             .listRowSeparator(.hidden)
+    }
+
+    /// On launch, scroll to the last-seen post if it's within the first ~3 pages.
+    private func restoreScrollPosition() async {
+        guard !didRestore, let saved = position.savedItemID() else { return }
+        didRestore = true
+        var extraPages = 0
+        while !feed.items.contains(where: { $0.id == saved }) && feed.hasMore && extraPages < 2 {
+            await feed.loadMore()
+            extraPages += 1
+        }
+        guard feed.items.contains(where: { $0.id == saved }) else { return }
+        try? await Task.sleep(for: .milliseconds(50)) // let rows render before scrolling
+        topID = saved
     }
 
     private func makeFetchers() -> [Network: PageFetcher] {
