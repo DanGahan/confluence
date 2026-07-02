@@ -1,4 +1,7 @@
 import Foundation
+import os
+
+private let log = Logger(subsystem: "com.dangahan.confluence", category: "bluesky")
 
 /// A logged-in AT Protocol session. Persisted (JSON) in the Keychain — never logged.
 public struct BlueskySession: Codable, Sendable, Equatable {
@@ -10,6 +13,7 @@ public struct BlueskySession: Codable, Sendable, Equatable {
 
 public enum BlueskyError: Error, Equatable, LocalizedError {
     case invalidCredentials
+    case twoFactorRequired
     case server(String)
     case network
     case malformedResponse
@@ -17,7 +21,9 @@ public enum BlueskyError: Error, Equatable, LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .invalidCredentials:
-            return "Incorrect handle or app password. Use an app password from bsky.app, not your main password."
+            return "Incorrect handle or app password. Use your full handle (e.g. alice.bsky.social) and an app password from bsky.app — not your main password."
+        case .twoFactorRequired:
+            return "This account needs a sign-in code. App passwords bypass 2FA — create one at bsky.app → Settings → App Passwords and use that."
         case .server(let message):
             return message
         case .network:
@@ -76,6 +82,11 @@ public struct BlueskyClient: Sendable {
 
         guard (200..<300).contains(http.statusCode) else {
             let xrpcError = try? JSONDecoder().decode(XRPCError.self, from: data)
+            // Error codes are public (no secrets); helps diagnose sign-in failures.
+            log.error("XRPC \(request.url?.lastPathComponent ?? "?", privacy: .public) failed: status \(http.statusCode, privacy: .public) error \(xrpcError?.error ?? "nil", privacy: .public)")
+            if xrpcError?.error == "AuthFactorTokenRequired" {
+                throw BlueskyError.twoFactorRequired
+            }
             if http.statusCode == 401 || xrpcError?.error == "AuthenticationRequired" {
                 throw BlueskyError.invalidCredentials
             }
