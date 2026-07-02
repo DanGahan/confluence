@@ -38,7 +38,7 @@ public enum BlueskyError: Error, Equatable, LocalizedError {
 /// Treats all responses as hostile: typed decode, no crashes on malformed input.
 public struct BlueskyClient: Sendable {
     public let pdsURL: URL
-    private let session: URLSession
+    let session: URLSession
 
     public init(pdsURL: URL = URL(string: "https://bsky.social")!, session: URLSession = .shared) {
         self.pdsURL = pdsURL
