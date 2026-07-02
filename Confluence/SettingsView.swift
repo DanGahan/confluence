@@ -1,17 +1,28 @@
 import SwiftUI
+import ConfluenceKit
 
 struct SettingsView: View {
+    @Environment(BlueskyAccountStore.self) private var bluesky
+    @State private var showingLogin = false
+
     var body: some View {
-        // Placeholder. F1/F2 add the Accounts pane (Bluesky + Mastodon login) here.
         Form {
-            Text("Accounts settings will appear here.")
-                .foregroundStyle(.secondary)
+            Section("Bluesky") {
+                if let session = bluesky.session {
+                    LabeledContent("Account", value: "@\(session.handle)")
+                    Button("Sign Out", role: .destructive) {
+                        try? bluesky.logOut()
+                    }
+                } else {
+                    Button("Sign In to Bluesky…") { showingLogin = true }
+                }
+            }
+            // F2 adds a Mastodon section here.
         }
         .formStyle(.grouped)
-        .frame(width: 450, height: 250)
+        .frame(width: 450, height: 220)
+        .sheet(isPresented: $showingLogin) {
+            BlueskyLoginView()
+        }
     }
-}
-
-#Preview {
-    SettingsView()
 }
