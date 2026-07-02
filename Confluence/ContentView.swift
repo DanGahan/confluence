@@ -22,6 +22,13 @@ struct ContentView: View {
                         Text("Your combined feed arrives in a later update.")
                             .foregroundStyle(.secondary)
                     }
+                } actions: {
+                    if !bluesky.isLoggedIn {
+                        Button("Add Bluesky Account") { showingBlueskyLogin = true }
+                    }
+                    if !mastodon.isLoggedIn {
+                        Button("Add Mastodon Account") { showingMastodonLogin = true }
+                    }
                 }
             } else {
                 ContentUnavailableView {

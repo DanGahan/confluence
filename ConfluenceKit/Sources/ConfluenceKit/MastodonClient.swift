@@ -175,6 +175,8 @@ public struct MastodonClient: Sendable {
         do {
             return try JSONDecoder().decode(T.self, from: data)
         } catch {
+            // DecodingError describes the missing/mismatched key, not the secret values.
+            log.error("decode \(String(describing: T.self), privacy: .public) failed: \(String(describing: error), privacy: .public)")
             throw MastodonError.malformedResponse
         }
     }
