@@ -1,0 +1,56 @@
+# Source of truth for the Xcode project. Regenerate with: xcodegen generate
+# Do not commit Confluence.xcodeproj — it is derived from this file.
+name: Confluence
+options:
+  bundleIdPrefix: com.dangahan.confluence
+  deploymentTarget:
+    macOS: "26.0"
+  createIntermediateGroups: true
+
+packages:
+  ConfluenceKit:
+    path: ConfluenceKit
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+
+targets:
+  Confluence:
+    type: application
+    platform: macOS
+    sources: [Confluence]
+    dependencies:
+      - package: ConfluenceKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.dangahan.confluence
+        CODE_SIGN_ENTITLEMENTS: Confluence/Confluence.entitlements
+        ENABLE_HARDENED_RUNTIME: YES
+        CODE_SIGN_STYLE: Automatic
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.social-networking
+        INFOPLIST_KEY_CFBundleDisplayName: Confluence
+
+  ConfluenceUITests:
+    type: bundle.ui-testing
+    platform: macOS
+    sources: [ConfluenceUITests]
+    dependencies:
+      - target: Confluence
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.dangahan.confluence.uitests
+
+schemes:
+  Confluence:
+    build:
+      targets:
+        Confluence: all
+        ConfluenceUITests: [test]
+    test:
+      targets:
+        - ConfluenceUITests
