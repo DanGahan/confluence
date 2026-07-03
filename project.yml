@@ -36,6 +36,9 @@ targets:
         # Development team for distribution.
         CODE_SIGN_STYLE: Manual
         CODE_SIGN_IDENTITY: "Confluence Dev"
+        # With a real signing identity, hardened runtime is enforced and rejects Xcode's
+        # separate debug dylib (different Team ID than our self-signed cert). Disable it.
+        ENABLE_DEBUG_DYLIB: NO
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.social-networking
         INFOPLIST_KEY_CFBundleDisplayName: Confluence
 
