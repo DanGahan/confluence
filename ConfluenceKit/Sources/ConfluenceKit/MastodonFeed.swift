@@ -104,7 +104,7 @@ extension MastodonClient {
                 avatarURL: URL(string: account.avatar),
                 createdAt: date,
                 text: htmlToPlainText(content),
-                attributedText: mastodonRichText(html: content, mentions: mentionLinks),
+                attributedText: autolinked(mastodonRichText(html: content, mentions: mentionLinks)),
                 imageURLs: mediaAttachments.filter { $0.type == "image" }.compactMap { URL(string: $0.url) },
                 repostedBy: boostedBy
             )

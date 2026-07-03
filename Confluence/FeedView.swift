@@ -368,6 +368,7 @@ struct FeedView: View {
 
 private struct FeedRow: View {
     @Environment(FollowStore.self) private var follows
+    @Environment(\.openURL) private var openURL
     let item: FeedItem
     @State private var showingProfile = false
 
@@ -406,7 +407,7 @@ private struct FeedRow: View {
                         .lineLimit(1)
                 }
                 if !item.text.isEmpty {
-                    Text(item.attributedText).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+                    RichTextLabel(attributed: item.attributedText, openURL: openURL)
                 }
                 if !item.imageURLs.isEmpty {
                     // Non-scrolling row — a nested horizontal ScrollView steals the List's
