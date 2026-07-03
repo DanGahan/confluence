@@ -1,4 +1,5 @@
 import SwiftUI
+import OSLog
 
 /// In-memory image cache so a scrolled-off image resolves instantly when it returns.
 /// NSCache is thread-safe, so this is shared between the loader actor and the views.
@@ -36,16 +37,24 @@ actor ImageLoader {
     private static func download(_ url: URL) async -> NSImage? {
         for attempt in 0..<3 {
             do {
-                let (data, _) = try await URLSession.shared.data(from: url)
-                return NSImage(data: data)
+                let (data, response) = try await URLSession.shared.data(from: url)
+                let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+                // A non-2xx (e.g. 429 rate-limit during a scroll burst) returns an error-page
+                // body, not an image — must retry, not decode it to nil and give up.
+                guard (200..<300).contains(status) else { throw URLError(.badServerResponse) }
+                if let image = NSImage(data: data) { return image }
+                throw URLError(.cannotDecodeContentData)
             } catch {
                 // ponytail: fixed 3 tries w/ linear backoff; add jitter/cap if it ever matters.
                 if attempt < 2 { try? await Task.sleep(for: .milliseconds(300 * (attempt + 1))) }
             }
         }
+        imageLog.error("image load failed after retries: \(url.host ?? "?", privacy: .public)")
         return nil
     }
 }
+
+private let imageLog = Logger(subsystem: "Confluence", category: "images")
 
 /// Cached async image. Replaces AsyncImage, which on macOS cancels in-flight loads when a row
 /// scrolls off and doesn't reliably retry. Cache hits render with no placeholder flash.
