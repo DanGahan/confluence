@@ -123,6 +123,7 @@ struct FeedView: View {
         .sheet(isPresented: $showingComposer, onDismiss: {
             if composer.didPostAll { composer.reset(); Task { await feed.refresh() } }
         }) { ComposerView() }
+        .handleProfileLinks()
     }
 
     @ToolbarContentBuilder private var feedToolbar: some ToolbarContent {
@@ -405,7 +406,7 @@ private struct FeedRow: View {
                         .lineLimit(1)
                 }
                 if !item.text.isEmpty {
-                    Text(item.text).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+                    Text(item.attributedText).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
                 }
                 if !item.imageURLs.isEmpty {
                     // Non-scrolling row — a nested horizontal ScrollView steals the List's

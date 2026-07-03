@@ -63,12 +63,24 @@ extension MastodonClient {
         let content: String
         let account: Account
         let mediaAttachments: [Media]
+        let mentions: [Mention]?
         let reblog: Box?
 
         enum CodingKeys: String, CodingKey {
-            case id, content, account, reblog
+            case id, content, account, mentions, reblog
             case createdAt = "created_at"
             case mediaAttachments = "media_attachments"
+        }
+
+        /// Maps an <a> href (a mention's account URL) to its in-app profile link.
+        var mentionLinks: [String: URL] {
+            var map: [String: URL] = [:]
+            for mention in mentions ?? [] {
+                if let url = ProfileLink.url(network: .mastodon, id: mention.id, handle: mention.acct) {
+                    map[mention.url] = url
+                }
+            }
+            return map
         }
 
         /// A boost carries the original post in `reblog`; show that, attributed to the booster.
@@ -92,6 +104,7 @@ extension MastodonClient {
                 avatarURL: URL(string: account.avatar),
                 createdAt: date,
                 text: htmlToPlainText(content),
+                attributedText: mastodonRichText(html: content, mentions: mentionLinks),
                 imageURLs: mediaAttachments.filter { $0.type == "image" }.compactMap { URL(string: $0.url) },
                 repostedBy: boostedBy
             )
@@ -112,6 +125,11 @@ extension MastodonClient {
         let type: String
         let url: String
     }
+    private struct Mention: Decodable {
+        let id: String
+        let url: String   // the account's profile URL, matches the <a href> in content
+        let acct: String
+    }
 }
 
 /// Minimal HTML → text for Mastodon post bodies. Full rendering (links, mentions) is F11.
@@ -123,7 +141,5 @@ func htmlToPlainText(_ html: String) -> String {
     text = text.replacingOccurrences(of: "<br/>", with: "\n")
     text = text.replacingOccurrences(of: "<br />", with: "\n")
     text = text.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
-    let entities = ["&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": "\"", "&#39;": "'", "&apos;": "'", "&nbsp;": " "]
-    for (entity, char) in entities { text = text.replacingOccurrences(of: entity, with: char) }
-    return text.trimmingCharacters(in: .whitespacesAndNewlines)
+    return decodeHTMLEntities(text).trimmingCharacters(in: .whitespacesAndNewlines)
 }

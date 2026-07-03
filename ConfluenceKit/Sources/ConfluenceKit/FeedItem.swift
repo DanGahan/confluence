@@ -11,6 +11,8 @@ public struct FeedItem: Identifiable, Sendable, Equatable {
     public let avatarURL: URL?
     public let createdAt: Date
     public let text: String
+    /// Rich version of `text` with `.link` runs for URLs and @-mentions. Defaults to plain text.
+    public let attributedText: AttributedString
     public let imageURLs: [URL]
     /// Display name of the reposter/booster, if this appeared via a repost/boost.
     public let repostedBy: String?
@@ -24,7 +26,8 @@ public struct FeedItem: Identifiable, Sendable, Equatable {
     public var authorKey: String { "\(network.rawValue):\(authorID)" }
 
     public init(network: Network, rawId: String, authorID: String = "", authorName: String, authorHandle: String,
-                avatarURL: URL?, createdAt: Date, text: String, imageURLs: [URL] = [], repostedBy: String? = nil,
+                avatarURL: URL?, createdAt: Date, text: String, attributedText: AttributedString? = nil,
+                imageURLs: [URL] = [], repostedBy: String? = nil,
                 isFollowing: Bool = false, followURI: String? = nil) {
         self.network = network
         self.rawId = rawId
@@ -34,6 +37,7 @@ public struct FeedItem: Identifiable, Sendable, Equatable {
         self.avatarURL = avatarURL
         self.createdAt = createdAt
         self.text = text
+        self.attributedText = attributedText ?? AttributedString(text)
         self.imageURLs = imageURLs
         self.repostedBy = repostedBy
         self.isFollowing = isFollowing

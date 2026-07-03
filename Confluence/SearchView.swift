@@ -39,6 +39,7 @@ struct SearchView: View {
             content
         }
         .frame(minWidth: 420, minHeight: 520)
+        .handleProfileLinks()
         .onAppear { fieldFocused = true }
         .onDisappear { search.clear() } // no search history stored
     }
@@ -118,7 +119,7 @@ private struct SearchPostRow: View {
                     Spacer(minLength: 4)
                     networkBadge(post.network)
                 }
-                if !post.text.isEmpty { Text(post.text).font(.callout).lineLimit(4) }
+                if !post.text.isEmpty { Text(post.attributedText).font(.callout).lineLimit(4) }
             }
         }
         .padding(.vertical, 4)

@@ -79,11 +79,30 @@ extension BlueskyClient {
                 avatarURL: post.author.avatar.flatMap(URL.init(string:)),
                 createdAt: createdAt,
                 text: post.record.text,
+                attributedText: Self.attributed(from: post.record),
                 imageURLs: post.embed?.images?.compactMap { URL(string: $0.fullsize) } ?? [],
                 repostedBy: reason?.by?.displayName,
                 isFollowing: post.author.viewer?.following != nil,
                 followURI: post.author.viewer?.following
             )
+        }
+
+        static func attributed(from record: Record) -> AttributedString? {
+            guard let facets = record.facets, !facets.isEmpty else { return nil }
+            let spans: [FacetSpan] = facets.compactMap { facet in
+                guard let feature = facet.features.first else { return nil }
+                let url: URL?
+                switch feature.type {
+                case "app.bsky.richtext.facet#link":
+                    url = feature.uri.flatMap { URL(string: $0) }
+                case "app.bsky.richtext.facet#mention":
+                    url = feature.did.flatMap { ProfileLink.url(network: .bluesky, id: $0, handle: "") }
+                default:
+                    return nil // hashtags etc. stay plain
+                }
+                return FacetSpan(start: facet.index.byteStart, end: facet.index.byteEnd, url: url)
+            }
+            return spans.isEmpty ? nil : blueskyRichText(text: record.text, spans: spans)
         }
     }
 
@@ -107,6 +126,18 @@ extension BlueskyClient {
     private struct Record: Decodable {
         let text: String
         let createdAt: String
+        let facets: [Facet]?
+    }
+    private struct Facet: Decodable {
+        let index: FacetIndex
+        let features: [FacetFeature]
+    }
+    private struct FacetIndex: Decodable { let byteStart: Int; let byteEnd: Int }
+    private struct FacetFeature: Decodable {
+        let type: String
+        let uri: String?
+        let did: String?
+        enum CodingKeys: String, CodingKey { case type = "$type", uri, did }
     }
     private struct Embed: Decodable {
         let images: [EmbedImage]?
