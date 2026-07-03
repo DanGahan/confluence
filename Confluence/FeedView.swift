@@ -54,6 +54,8 @@ struct FeedView: View {
                 }
             }
             .scrollTargetLayout()
+            .frame(maxWidth: 600)          // cap reading width
+            .frame(maxWidth: .infinity)    // center the column when the window is wider
         }
         .scrollPosition(id: $topID, anchor: .top)
         .onChange(of: topID) { _, newID in scheduleSave(newID) }
