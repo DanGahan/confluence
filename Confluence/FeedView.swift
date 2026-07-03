@@ -6,11 +6,13 @@ struct FeedView: View {
     @Environment(MastodonAccountStore.self) private var mastodon
     @Environment(FollowStore.self) private var follows
     @Environment(NotificationStore.self) private var notifications
+    @Environment(SearchStore.self) private var search
     @Environment(\.scenePhase) private var scenePhase
     @State private var feed = FeedStore()
     @State private var showingBlueskyLogin = false
     @State private var showingMastodonLogin = false
     @State private var showingNotifications = false
+    @State private var showingSearch = false
     @State private var lastPagedTailID: String?
     @State private var topID: String?
     @State private var didRestore = false
@@ -94,6 +96,7 @@ struct FeedView: View {
             feed.setFetchers(makeFetchers())
             follows.setActions(makeFollowActions())
             notifications.setFetchers(makeNotificationFetchers())
+            search.setFetchers(makeSearchFetchers())
             await feed.refresh()
             await restoreScrollPosition()
             await notifications.refresh()
@@ -114,9 +117,16 @@ struct FeedView: View {
         .sheet(isPresented: $showingBlueskyLogin) { BlueskyLoginView() }
         .sheet(isPresented: $showingMastodonLogin) { MastodonLoginView() }
         .sheet(isPresented: $showingNotifications) { NotificationsView() }
+        .sheet(isPresented: $showingSearch) { SearchView() }
     }
 
     @ToolbarContentBuilder private var feedToolbar: some ToolbarContent {
+        ToolbarItem {
+            Button { showingSearch = true } label: { Image(systemName: "magnifyingglass") }
+                .keyboardShortcut("f")
+                .help("Search")
+                .accessibilityLabel("Search")
+        }
         ToolbarItem {
             Menu {
                 if !bluesky.isLoggedIn { Button("Add Bluesky Account") { showingBlueskyLogin = true } }
@@ -268,6 +278,25 @@ struct FeedView: View {
             let client = MastodonClient()
             fetchers[.mastodon] = {
                 try await client.notifications(host: session.host, accessToken: session.accessToken)
+            }
+        }
+        return fetchers
+    }
+
+    private func makeSearchFetchers() -> [Network: SearchFetcher] {
+        var fetchers: [Network: SearchFetcher] = [:]
+        if bluesky.isLoggedIn {
+            let store = bluesky
+            let client = BlueskyClient()
+            fetchers[.bluesky] = { query in
+                guard let token = await store.session?.accessJwt else { return SearchResults(failed: true) }
+                return await client.search(accessToken: token, query: query)
+            }
+        }
+        if let session = mastodon.session {
+            let client = MastodonClient()
+            fetchers[.mastodon] = { query in
+                await client.search(host: session.host, accessToken: session.accessToken, query: query)
             }
         }
         return fetchers
