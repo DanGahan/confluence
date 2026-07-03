@@ -13,7 +13,6 @@ struct FeedView: View {
     @State private var showingMastodonLogin = false
     @State private var showingNotifications = false
     @State private var showingSearch = false
-    @State private var lastPagedTailID: String?
     @State private var topID: String?
     @State private var didRestore = false
     @State private var saveTask: Task<Void, Never>?
@@ -48,7 +47,6 @@ struct FeedView: View {
                     FeedRow(item: item)
                         .padding(.horizontal)
                         .padding(.vertical, 8)
-                        .onAppear { maybeLoadMore(after: item) }
                     Divider()
                 }
                 if feed.hasMore && !feed.items.isEmpty {
@@ -61,13 +59,12 @@ struct FeedView: View {
         }
         .scrollPosition(id: $topID, anchor: .top)
         .onChange(of: topID) { _, newID in scheduleSave(newID) }
-    }
-
-    private func maybeLoadMore(after item: FeedItem) {
-        // Page each tail at most once, else onAppear chain-loads the whole timeline.
-        guard item.id == feed.items.last?.id, item.id != lastPagedTailID else { return }
-        lastPagedTailID = item.id
-        Task { await feed.loadMore() }
+        .onScrollGeometryChange(for: Bool.self) { geo in
+            // Near the bottom: within ~1200pt of the end.
+            geo.contentOffset.y + geo.containerSize.height + 1200 >= geo.contentSize.height
+        } action: { _, nearBottom in
+            if nearBottom { Task { await feed.loadMore() } }
+        }
     }
 
     private func scheduleSave(_ id: String?) {
