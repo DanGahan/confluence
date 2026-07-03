@@ -58,7 +58,10 @@ Rules:
 
 The Xcode project is generated from `project.yml` and is **not** committed. After cloning (and after editing `project.yml`), run `xcodegen generate` before any `xcodebuild` command. Install the tool with `brew install xcodegen`.
 
+**First-time setup:** run `scripts/create-dev-cert.sh` once to create the local "Confluence Dev" code-signing identity. The build signs with it (`project.yml`), giving a stable signature so macOS Keychain "Always Allow" persists across rebuilds instead of re-prompting every launch. Replace with a real Apple Development team before distribution.
+
 ```bash
+scripts/create-dev-cert.sh                      # one-time: local signing identity (stops Keychain prompts)
 xcodegen generate                               # (re)create Confluence.xcodeproj from project.yml
 swift test --package-path ConfluenceKit        # unit + integration (fast, run constantly)
 xcodebuild -scheme Confluence build            # full app build

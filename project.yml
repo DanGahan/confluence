@@ -31,7 +31,11 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.dangahan.confluence
         CODE_SIGN_ENTITLEMENTS: Confluence/Confluence.entitlements
         ENABLE_HARDENED_RUNTIME: YES
-        CODE_SIGN_STYLE: Automatic
+        # Stable local signing identity so Keychain "Always Allow" persists across rebuilds.
+        # Create it once with scripts/create-dev-cert.sh. Replace with a real Apple
+        # Development team for distribution.
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: "Confluence Dev"
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.social-networking
         INFOPLIST_KEY_CFBundleDisplayName: Confluence
 
