@@ -108,12 +108,14 @@ struct FeedView: View {
                     Image(systemName: "person.crop.circle")
                 }
                 .help("Accounts")
+                .accessibilityLabel("Accounts")
             }
             if isScrolledAway {
                 ToolbarItem {
                     Button { scrollToTop() } label: { Image(systemName: "arrow.up.to.line") }
                         .keyboardShortcut(.upArrow)
                         .help("Scroll to Top")
+                        .accessibilityLabel("Scroll to top")
                 }
             }
             ToolbarItem {
@@ -131,11 +133,13 @@ struct FeedView: View {
                         }
                 }
                 .help(notificationsTooltip)
+                .accessibilityLabel(notifications.unreadCount > 0 ? "Notifications, \(notifications.unreadCount) unread" : "Notifications")
             }
             ToolbarItem {
                 Button { Task { await feed.refresh() } } label: { Image(systemName: "arrow.clockwise") }
                     .keyboardShortcut("r")
                     .help("Refresh")
+                    .accessibilityLabel("Refresh")
             }
         }
         .sheet(isPresented: $showingBlueskyLogin) { BlueskyLoginView() }
@@ -260,7 +264,7 @@ struct FeedView: View {
             Text(message)
                 .font(.callout)
                 .padding(.horizontal, 14).padding(.vertical, 10)
-                .background(.regularMaterial, in: Capsule())
+                .glassEffect(.regular, in: .capsule)
                 .padding(.bottom, 16)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
                 .task {
