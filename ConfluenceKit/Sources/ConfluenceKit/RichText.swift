@@ -53,6 +53,37 @@ func stringRange(in text: String, utf8Start: Int, utf8End: Int) -> Range<String.
     return sStr..<eStr
 }
 
+// MARK: - Auto-linking bare URLs
+
+private let urlDetector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
+
+/// Adds `.link` attributes to bare URLs not already inside a link/mention run. Mirrors the
+/// official clients, which linkify URLs even when a post carries no facets (common for bots
+/// and bridged posts). Never overwrites an existing link (facet links, @-mentions win).
+func autolinked(_ attributed: AttributedString) -> AttributedString {
+    let text = String(attributed.characters)
+    guard let detector = urlDetector, !text.isEmpty else { return attributed }
+    var result = attributed
+    let full = NSRange(text.startIndex..<text.endIndex, in: text)
+    for match in detector.matches(in: text, range: full) {
+        guard let url = match.url, let r = Range(match.range, in: text) else { continue }
+        let lower = text.distance(from: text.startIndex, to: r.lowerBound)
+        let upper = text.distance(from: text.startIndex, to: r.upperBound)
+        guard let start = result.index(result.startIndex, offsetByCharacters: lower, limitedBy: result.endIndex),
+              let end = result.index(result.startIndex, offsetByCharacters: upper, limitedBy: result.endIndex) else { continue }
+        if result[start..<end].runs.allSatisfy({ $0.link == nil }) {
+            result[start..<end].link = url
+        }
+    }
+    return result
+}
+
+private extension AttributedString {
+    func index(_ i: Index, offsetByCharacters distance: Int, limitedBy limit: Index) -> Index? {
+        characters.index(i, offsetBy: distance, limitedBy: limit)
+    }
+}
+
 // MARK: - Bluesky (facets)
 
 /// A resolved facet: a UTF-8 byte range and the URL it links to (web link or profile link).

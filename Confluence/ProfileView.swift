@@ -112,6 +112,7 @@ struct ProfileView: View {
 }
 
 private struct ProfilePostRow: View {
+    @Environment(\.openURL) private var openURL
     let post: FeedItem
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -122,8 +123,7 @@ private struct ProfilePostRow: View {
             Text(post.createdAt, format: .relative(presentation: .named))
                 .font(.caption).foregroundStyle(.secondary)
             if !post.text.isEmpty {
-                Text(post.attributedText)
-                    .fixedSize(horizontal: false, vertical: true)
+                RichTextLabel(attributed: post.attributedText, openURL: openURL)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             if !post.imageURLs.isEmpty {
