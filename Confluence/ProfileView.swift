@@ -113,6 +113,14 @@ struct ProfileView: View {
 
 private struct ProfilePostRow: View {
     let post: FeedItem
+    @State private var showingThread = false
+    private var threadLabel: String {
+        switch post.replyCount {
+        case 0: "Show thread"
+        case 1: "1 reply"
+        default: "\(post.replyCount) replies"
+        }
+    }
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             if let repostedBy = post.repostedBy {
@@ -135,8 +143,16 @@ private struct ProfilePostRow: View {
                     }
                 }
             }
+            if post.hasThread {
+                Button { showingThread = true } label: {
+                    Label(threadLabel, systemImage: "bubble.left.and.bubble.right").font(.caption)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+            }
             Divider()
         }
         .padding(.vertical, 4)
+        .sheet(isPresented: $showingThread) { ThreadView(item: post) }
     }
 }

@@ -55,6 +55,51 @@ extension MastodonClient {
         return FeedPage(items: items, nextCursor: statuses.isEmpty ? nil : statuses.last?.id)
     }
 
+    /// `GET /api/v1/statuses/:id` + `/context` — the full conversation, chronological.
+    public func statusContext(host: String, accessToken: String, statusID: String) async throws -> PostThread {
+        async let focus = fetchStatus(host: host, accessToken: accessToken, statusID: statusID)
+        async let context = fetchContext(host: host, accessToken: accessToken, statusID: statusID)
+        let (focusStatus, ctx) = try await (focus, context)
+
+        let all = (ctx.ancestors + [focusStatus] + ctx.descendants).compactMap { $0.feedItem(host: host) }
+        let focusID = focusStatus.feedItem(host: host)?.id ?? all.first?.id ?? ""
+        return PostThread(items: chronological(all), focusID: focusID)
+    }
+
+    private func fetchStatus(host: String, accessToken: String, statusID: String) async throws -> Status {
+        let data = try await getJSON(host: host, accessToken: accessToken, path: "/api/v1/statuses/\(statusID)")
+        guard let status = try? JSONDecoder().decode(Status.self, from: data) else { throw MastodonError.malformedResponse }
+        return status
+    }
+
+    private func fetchContext(host: String, accessToken: String, statusID: String) async throws -> Context {
+        let data = try await getJSON(host: host, accessToken: accessToken, path: "/api/v1/statuses/\(statusID)/context")
+        guard let ctx = try? JSONDecoder().decode(Context.self, from: data) else { throw MastodonError.malformedResponse }
+        return ctx
+    }
+
+    private func getJSON(host: String, accessToken: String, path: String) async throws -> Data {
+        var components = URLComponents()
+        components.scheme = "https"
+        components.host = host
+        components.path = path
+        var request = URLRequest(url: components.url!)
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        let data: Data
+        let response: URLResponse
+        do { (data, response) = try await session.data(for: request) }
+        catch { throw MastodonError.network }
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw MastodonError.server("Mastodon request to \(path) failed.")
+        }
+        return data
+    }
+
+    private struct Context: Decodable {
+        let ancestors: [Status]
+        let descendants: [Status]
+    }
+
     // MARK: - Wire format (only the fields we render)
 
     private struct Status: Decodable {
@@ -65,11 +110,15 @@ extension MastodonClient {
         let mediaAttachments: [Media]
         let mentions: [Mention]?
         let reblog: Box?
+        let repliesCount: Int?
+        let inReplyToId: String?
 
         enum CodingKeys: String, CodingKey {
             case id, content, account, mentions, reblog
             case createdAt = "created_at"
             case mediaAttachments = "media_attachments"
+            case repliesCount = "replies_count"
+            case inReplyToId = "in_reply_to_id"
         }
 
         /// Maps an <a> href (a mention's account URL) to its in-app profile link.
@@ -106,7 +155,10 @@ extension MastodonClient {
                 text: htmlToPlainText(content),
                 attributedText: mastodonRichText(html: content, mentions: mentionLinks),
                 imageURLs: mediaAttachments.filter { $0.type == "image" }.compactMap { URL(string: $0.url) },
-                repostedBy: boostedBy
+                repostedBy: boostedBy,
+                threadID: id, // the original status id (for a boost this is the reblog's id)
+                replyCount: repliesCount ?? 0,
+                isReply: inReplyToId != nil
             )
         }
 
