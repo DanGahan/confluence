@@ -48,8 +48,9 @@ struct SearchView: View {
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 if !search.people.isEmpty {
+                    // Cap people so posts stay reachable — search returns up to 25 per network.
                     Section("People") {
-                        ForEach(search.people) { person in PersonRow(person: person) }
+                        ForEach(search.people.prefix(8)) { person in PersonRow(person: person) }
                     }
                 }
                 if !search.posts.isEmpty {
