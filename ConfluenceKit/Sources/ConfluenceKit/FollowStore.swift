@@ -1,6 +1,15 @@
 import Foundation
 import Observation
 
+/// An author that can be followed/unfollowed. Feed posts and search-result people conform.
+public protocol Followable {
+    var network: Network { get }
+    var authorID: String { get }
+    var authorKey: String { get }
+    var isFollowing: Bool { get }
+    var followURI: String? { get }
+}
+
 /// Per-network follow/unfollow operations. `follow` returns an optional handle (Bluesky
 /// follow-record URI) needed later to unfollow; `unfollow` receives it back.
 public struct FollowActions: Sendable {
@@ -32,11 +41,11 @@ public final class FollowStore {
         self.actions = actions
     }
 
-    public func isFollowing(_ item: FeedItem) -> Bool {
+    public func isFollowing(_ item: some Followable) -> Bool {
         overrides[item.authorKey] ?? item.isFollowing
     }
 
-    public func toggle(_ item: FeedItem) async {
+    public func toggle(_ item: some Followable) async {
         guard let action = actions[item.network] else { return }
         let key = item.authorKey
         let wasFollowing = isFollowing(item)
