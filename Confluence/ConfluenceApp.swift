@@ -6,6 +6,7 @@ struct ConfluenceApp: App {
     @State private var bluesky: BlueskyAccountStore
     @State private var mastodon: MastodonAccountStore
     @State private var follows = FollowStore()
+    @State private var notifications = NotificationStore()
 
     init() {
         // UI tests use in-memory storage: a clean logged-out state, and no Keychain access
@@ -23,6 +24,7 @@ struct ConfluenceApp: App {
                 .environment(bluesky)
                 .environment(mastodon)
                 .environment(follows)
+                .environment(notifications)
         }
         .windowResizability(.contentMinSize)
 
