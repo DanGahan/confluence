@@ -371,6 +371,7 @@ private struct FeedRow: View {
     @Environment(\.openURL) private var openURL
     let item: FeedItem
     @State private var showingProfile = false
+    @State private var lightbox: LightboxItem?
 
     private var isFollowing: Bool { follows.isFollowing(item) }
     private var networkName: String { item.network == .bluesky ? "Bluesky" : "Mastodon" }
@@ -413,11 +414,15 @@ private struct FeedRow: View {
                     // Non-scrolling row — a nested horizontal ScrollView steals the List's
                     // vertical scroll gesture on macOS. Both networks cap posts at 4 images.
                     HStack(spacing: 6) {
-                        ForEach(item.imageURLs.prefix(4), id: \.self) { url in
-                            RemoteImage(url) { Color.secondary.opacity(0.15) }
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 140)
-                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                        let images = Array(item.imageURLs.prefix(4))
+                        ForEach(Array(images.enumerated()), id: \.element) { i, url in
+                            Button { lightbox = LightboxItem(urls: images, start: i) } label: {
+                                RemoteImage(url) { Color.secondary.opacity(0.15) }
+                                    .frame(maxWidth: .infinity)
+                                    .frame(height: 140)
+                                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                            }
+                            .buttonStyle(.plain)
                         }
                     }
                 }
@@ -429,6 +434,7 @@ private struct FeedRow: View {
                 Task { await follows.toggle(item) }
             }
         }
+        .sheet(item: $lightbox) { ImageLightbox(item: $0) }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilitySummary)
         .accessibilityAction(named: followLabel) { Task { await follows.toggle(item) } }
