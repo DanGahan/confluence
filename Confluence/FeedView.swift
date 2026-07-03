@@ -32,9 +32,11 @@ struct FeedView: View {
         Task { await feed.refresh() } // fresh-content check once at top
     }
 
-    var body: some View {
-        // ScrollView + LazyVStack + scrollTargetLayout: List doesn't report the top
-        // visible id via .scrollPosition on macOS, which F6 (position save) needs.
+    private var refreshAction: () -> Void { { Task { await feed.refresh() } } }
+
+    // ScrollView + LazyVStack + scrollTargetLayout: List doesn't report the top
+    // visible id via .scrollPosition on macOS, which F6 (position save) needs.
+    private var feedScroll: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
                 if !feed.failedNetworks.isEmpty {
@@ -44,12 +46,7 @@ struct FeedView: View {
                     FeedRow(item: item)
                         .padding(.horizontal)
                         .padding(.vertical, 8)
-                        .onAppear {
-                            // Page each tail at most once, else onAppear chain-loads everything.
-                            guard item.id == feed.items.last?.id, item.id != lastPagedTailID else { return }
-                            lastPagedTailID = item.id
-                            Task { await feed.loadMore() }
-                        }
+                        .onAppear { maybeLoadMore(after: item) }
                     Divider()
                 }
                 if feed.hasMore && !feed.items.isEmpty {
@@ -59,16 +56,29 @@ struct FeedView: View {
             .scrollTargetLayout()
         }
         .scrollPosition(id: $topID, anchor: .top)
-        .onChange(of: topID) { _, newID in
-            // Debounce: save the topmost visible post's id after scrolling settles.
-            guard let newID else { return }
-            saveTask?.cancel()
-            saveTask = Task {
-                try? await Task.sleep(for: .milliseconds(400))
-                guard !Task.isCancelled else { return }
-                position.save(itemID: newID)
-            }
+        .onChange(of: topID) { _, newID in scheduleSave(newID) }
+    }
+
+    private func maybeLoadMore(after item: FeedItem) {
+        // Page each tail at most once, else onAppear chain-loads the whole timeline.
+        guard item.id == feed.items.last?.id, item.id != lastPagedTailID else { return }
+        lastPagedTailID = item.id
+        Task { await feed.loadMore() }
+    }
+
+    private func scheduleSave(_ id: String?) {
+        // Debounce: save the topmost visible post's id after scrolling settles.
+        guard let id else { return }
+        saveTask?.cancel()
+        saveTask = Task {
+            try? await Task.sleep(for: .milliseconds(400))
+            guard !Task.isCancelled else { return }
+            position.save(itemID: id)
         }
+    }
+
+    var body: some View {
+        feedScroll
         .overlay {
             if feed.items.isEmpty {
                 if feed.isLoading {
@@ -95,56 +105,58 @@ struct FeedView: View {
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { Task { await notifications.refresh() } }
         }
+        .focusedSceneValue(\.refreshFeed, refreshAction)
+        .focusedSceneValue(\.scrollFeedToTop, scrollToTop)
         .overlay(alignment: .bottom) { followToast }
-        .toolbar {
-            ToolbarItem {
-                Menu {
-                    if !bluesky.isLoggedIn { Button("Add Bluesky Account") { showingBlueskyLogin = true } }
-                    if !mastodon.isLoggedIn { Button("Add Mastodon Account") { showingMastodonLogin = true } }
-                    if bluesky.isLoggedIn && mastodon.isLoggedIn {
-                        Text("Both accounts connected")
-                    }
-                } label: {
-                    Image(systemName: "person.crop.circle")
-                }
-                .help("Accounts")
-                .accessibilityLabel("Accounts")
-            }
-            if isScrolledAway {
-                ToolbarItem {
-                    Button { scrollToTop() } label: { Image(systemName: "arrow.up.to.line") }
-                        .keyboardShortcut(.upArrow)
-                        .help("Scroll to Top")
-                        .accessibilityLabel("Scroll to top")
-                }
-            }
-            ToolbarItem {
-                Button { showingNotifications = true } label: {
-                    Image(systemName: notifications.unreadCount > 0 ? "bell.badge.fill" : "bell")
-                        .overlay(alignment: .topTrailing) {
-                            if notifications.unreadCount > 0 {
-                                Text("\(min(notifications.unreadCount, 99))")
-                                    .font(.system(size: 9, weight: .bold))
-                                    .foregroundStyle(.white)
-                                    .padding(.horizontal, 3).padding(.vertical, 1)
-                                    .background(.red, in: Capsule())
-                                    .offset(x: 8, y: -8)
-                            }
-                        }
-                }
-                .help(notificationsTooltip)
-                .accessibilityLabel(notifications.unreadCount > 0 ? "Notifications, \(notifications.unreadCount) unread" : "Notifications")
-            }
-            ToolbarItem {
-                Button { Task { await feed.refresh() } } label: { Image(systemName: "arrow.clockwise") }
-                    .keyboardShortcut("r")
-                    .help("Refresh")
-                    .accessibilityLabel("Refresh")
-            }
-        }
+        .toolbar { feedToolbar }
         .sheet(isPresented: $showingBlueskyLogin) { BlueskyLoginView() }
         .sheet(isPresented: $showingMastodonLogin) { MastodonLoginView() }
         .sheet(isPresented: $showingNotifications) { NotificationsView() }
+    }
+
+    @ToolbarContentBuilder private var feedToolbar: some ToolbarContent {
+        ToolbarItem {
+            Menu {
+                if !bluesky.isLoggedIn { Button("Add Bluesky Account") { showingBlueskyLogin = true } }
+                if !mastodon.isLoggedIn { Button("Add Mastodon Account") { showingMastodonLogin = true } }
+                if bluesky.isLoggedIn && mastodon.isLoggedIn { Text("Both accounts connected") }
+            } label: {
+                Image(systemName: "person.crop.circle")
+            }
+            .help("Accounts")
+            .accessibilityLabel("Accounts")
+        }
+        if isScrolledAway {
+            ToolbarItem {
+                Button { scrollToTop() } label: { Image(systemName: "arrow.up.to.line") }
+                    .help("Scroll to Top")
+                    .accessibilityLabel("Scroll to top")
+            }
+        }
+        ToolbarItem {
+            Button { showingNotifications = true } label: {
+                Image(systemName: notifications.unreadCount > 0 ? "bell.badge.fill" : "bell")
+                    .overlay(alignment: .topTrailing) { unreadBadge }
+            }
+            .help(notificationsTooltip)
+            .accessibilityLabel(notifications.unreadCount > 0 ? "Notifications, \(notifications.unreadCount) unread" : "Notifications")
+        }
+        ToolbarItem {
+            Button { Task { await feed.refresh() } } label: { Image(systemName: "arrow.clockwise") }
+                .help("Refresh")
+                .accessibilityLabel("Refresh")
+        }
+    }
+
+    @ViewBuilder private var unreadBadge: some View {
+        if notifications.unreadCount > 0 {
+            Text("\(min(notifications.unreadCount, 99))")
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 3).padding(.vertical, 1)
+                .background(.red, in: Capsule())
+                .offset(x: 8, y: -8)
+        }
     }
 
     private var notificationsTooltip: String {
