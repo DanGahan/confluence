@@ -17,6 +17,8 @@ struct ProfileView: View {
     @State private var posts: [FeedItem] = []
     @State private var loading = true
 
+    private let contentWidth: CGFloat = 448
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -34,14 +36,13 @@ struct ProfileView: View {
                         Text("No posts.").foregroundStyle(.secondary).padding()
                     }
                 }
-                .padding()
-                .frame(maxWidth: 600)
+                .frame(width: contentWidth, alignment: .leading) // hard width: a long URL can't stretch the sheet
+                .padding(16)
             }
-            .frame(maxWidth: .infinity)
             .navigationTitle("@\(handle)")
             .toolbar { Button("Done") { dismiss() }.keyboardShortcut(.cancelAction) }
         }
-        .frame(minWidth: 480, minHeight: 560)
+        .frame(width: contentWidth + 32, height: 620)
         .task { await load() }
     }
 
@@ -60,8 +61,13 @@ struct ProfileView: View {
                     .buttonStyle(.borderedProminent)
                 }
                 Text("@\(profile.handle)").font(.subheadline).foregroundStyle(.secondary)
+                    .lineLimit(1).truncationMode(.middle)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 if !profile.bio.isEmpty {
-                    Text(profile.bio).font(.callout).fixedSize(horizontal: false, vertical: true).padding(.top, 2)
+                    Text(profile.bio).font(.callout)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.top, 2)
                 }
                 HStack(spacing: 16) {
                     NavigationLink { FollowListView(network: network, authorID: authorID, kind: .following) } label: {
@@ -114,7 +120,11 @@ private struct ProfilePostRow: View {
             }
             Text(post.createdAt, format: .relative(presentation: .named))
                 .font(.caption).foregroundStyle(.secondary)
-            if !post.text.isEmpty { Text(post.text).fixedSize(horizontal: false, vertical: true) }
+            if !post.text.isEmpty {
+                Text(post.text)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
             if !post.imageURLs.isEmpty {
                 HStack(spacing: 6) {
                     ForEach(post.imageURLs.prefix(4), id: \.self) { url in
