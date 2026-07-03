@@ -51,13 +51,15 @@ extension MastodonClient {
         /// A boost carries the original post in `reblog`; show that, attributed to the booster.
         func feedItem(host: String) -> FeedItem? {
             if let reblog = reblog?.value {
-                return reblog.feedItem(host: host, boostedBy: account.displayName.isEmpty ? account.acct : account.displayName, boostId: id)
+                // Order by the boost time (this status), not the original's authored time.
+                return reblog.feedItem(host: host, boostedBy: account.displayName.isEmpty ? account.acct : account.displayName,
+                                       boostId: id, orderCreatedAt: createdAt)
             }
-            return feedItem(host: host, boostedBy: nil, boostId: nil)
+            return feedItem(host: host, boostedBy: nil, boostId: nil, orderCreatedAt: createdAt)
         }
 
-        private func feedItem(host: String, boostedBy: String?, boostId: String?) -> FeedItem? {
-            guard let date = ISO8601.date(from: createdAt) else { return nil }
+        private func feedItem(host: String, boostedBy: String?, boostId: String?, orderCreatedAt: String) -> FeedItem? {
+            guard let date = ISO8601.date(from: orderCreatedAt) else { return nil }
             return FeedItem(
                 network: .mastodon,
                 rawId: boostId ?? id,

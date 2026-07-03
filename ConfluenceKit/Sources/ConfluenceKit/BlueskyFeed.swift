@@ -52,7 +52,10 @@ extension BlueskyClient {
         let reason: Reason?
 
         var feedItem: FeedItem? {
-            guard let createdAt = ISO8601.date(from: post.record.createdAt) else { return nil }
+            // Order by timeline time: a repost's own time, else when the post was indexed —
+            // NOT the original post's authored time (a repost of an old post must not sink).
+            let orderString = reason?.indexedAt ?? post.indexedAt ?? post.record.createdAt
+            guard let createdAt = ISO8601.date(from: orderString) else { return nil }
             return FeedItem(
                 network: .bluesky,
                 rawId: post.uri,
@@ -75,6 +78,7 @@ extension BlueskyClient {
         let author: Author
         let record: Record
         let embed: Embed?
+        let indexedAt: String?
     }
     private struct Author: Decodable {
         let did: String
@@ -98,6 +102,7 @@ extension BlueskyClient {
     }
     private struct Reason: Decodable {
         let by: ReasonActor?
+        let indexedAt: String?
     }
     private struct ReasonActor: Decodable {
         let displayName: String?
