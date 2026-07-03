@@ -371,12 +371,20 @@ private struct FeedRow: View {
     @Environment(\.openURL) private var openURL
     let item: FeedItem
     @State private var showingProfile = false
+    @State private var showingThread = false
     @State private var lightbox: LightboxItem?
 
     private var isFollowing: Bool { follows.isFollowing(item) }
     private var networkName: String { item.network == .bluesky ? "Bluesky" : "Mastodon" }
     private var followLabel: String {
         (isFollowing ? "Unfollow @" : "Follow @") + item.authorHandle + " (\(networkName))"
+    }
+    private var threadLabel: String {
+        switch item.replyCount {
+        case 0: "Show thread"
+        case 1: "1 reply"
+        default: "\(item.replyCount) replies"
+        }
     }
 
     var body: some View {
@@ -390,6 +398,7 @@ private struct FeedRow: View {
             .sheet(isPresented: $showingProfile) {
                 ProfileView(network: item.network, authorID: item.authorID, handle: item.authorHandle)
             }
+            .sheet(isPresented: $showingThread) { ThreadView(item: item) }
 
             VStack(alignment: .leading, spacing: 4) {
                 if let repostedBy = item.repostedBy {
@@ -425,6 +434,15 @@ private struct FeedRow: View {
                             .buttonStyle(.plain)
                         }
                     }
+                }
+                if item.hasThread {
+                    Button { showingThread = true } label: {
+                        Label(threadLabel, systemImage: "bubble.left.and.bubble.right")
+                            .font(.caption)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 2)
                 }
             }
         }

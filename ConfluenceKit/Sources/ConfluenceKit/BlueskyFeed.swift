@@ -25,6 +25,29 @@ extension BlueskyClient {
         return FeedPage(items: decoded.feed.compactMap(\.feedItem), nextCursor: decoded.cursor)
     }
 
+    /// `app.bsky.feed.getPostThread` — a post with its parent chain and nested replies.
+    /// Flattened to every post in the conversation, chronological (oldest first).
+    public func postThread(accessToken: String, uri: String, depth: Int = 30) async throws -> PostThread {
+        var components = URLComponents(url: pdsURL.appending(path: "xrpc/app.bsky.feed.getPostThread"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [
+            URLQueryItem(name: "uri", value: uri),
+            URLQueryItem(name: "depth", value: String(depth)),
+            URLQueryItem(name: "parentHeight", value: "40"),
+        ]
+        var request = URLRequest(url: components.url!)
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+
+        let (data, response) = try await timelineData(for: request)
+        guard (200..<300).contains(response.statusCode) else { throw BlueskyError.server("Bluesky thread status \(response.statusCode).") }
+        guard let decoded = try? JSONDecoder().decode(ThreadResponse.self, from: data) else { throw BlueskyError.malformedResponse }
+
+        var posts: [Post] = []
+        decoded.thread.collect(into: &posts)
+        let items = posts.compactMap { $0.threadFeedItem() }
+        let focusID = decoded.thread.post?.threadFeedItem()?.id ?? items.first?.id ?? ""
+        return PostThread(items: chronological(items), focusID: focusID)
+    }
+
     /// `app.bsky.feed.getAuthorFeed` — a single user's posts. Same wire shape as the timeline.
     public func authorFeed(accessToken: String, actor: String, cursor: String?, limit: Int = 40) async throws -> FeedPage {
         var components = URLComponents(url: pdsURL.appending(path: "xrpc/app.bsky.feed.getAuthorFeed"), resolvingAgainstBaseURL: false)!
@@ -70,21 +93,7 @@ extension BlueskyClient {
             // NOT the original post's authored time (a repost of an old post must not sink).
             let orderString = reason?.indexedAt ?? post.indexedAt ?? post.record.createdAt
             guard let createdAt = ISO8601.date(from: orderString) else { return nil }
-            return FeedItem(
-                network: .bluesky,
-                rawId: post.uri,
-                authorID: post.author.did,
-                authorName: post.author.displayName ?? post.author.handle,
-                authorHandle: post.author.handle,
-                avatarURL: post.author.avatar.flatMap(URL.init(string:)),
-                createdAt: createdAt,
-                text: post.record.text,
-                attributedText: Self.attributed(from: post.record),
-                imageURLs: post.embed?.images?.compactMap { URL(string: $0.fullsize) } ?? [],
-                repostedBy: reason?.by?.displayName,
-                isFollowing: post.author.viewer?.following != nil,
-                followURI: post.author.viewer?.following
-            )
+            return post.makeFeedItem(orderDate: createdAt, repostedBy: reason?.by?.displayName)
         }
 
         static func attributed(from record: Record) -> AttributedString {
@@ -113,6 +122,50 @@ extension BlueskyClient {
         let record: Record
         let embed: Embed?
         let indexedAt: String?
+        let replyCount: Int?
+
+        func makeFeedItem(orderDate: Date, repostedBy: String?) -> FeedItem {
+            FeedItem(
+                network: .bluesky,
+                rawId: uri,
+                authorID: author.did,
+                authorName: author.displayName ?? author.handle,
+                authorHandle: author.handle,
+                avatarURL: author.avatar.flatMap(URL.init(string:)),
+                createdAt: orderDate,
+                text: record.text,
+                attributedText: FeedEntry.attributed(from: record),
+                imageURLs: embed?.images?.compactMap { URL(string: $0.fullsize) } ?? [],
+                repostedBy: repostedBy,
+                isFollowing: author.viewer?.following != nil,
+                followURI: author.viewer?.following,
+                threadID: uri,
+                replyCount: replyCount ?? 0,
+                isReply: record.reply != nil
+            )
+        }
+
+        /// A thread post orders by its own authored time (no repost wrapping in a thread).
+        func threadFeedItem() -> FeedItem? {
+            guard let date = ISO8601.date(from: record.createdAt) else { return nil }
+            return makeFeedItem(orderDate: date, repostedBy: nil)
+        }
+    }
+
+    private struct ThreadResponse: Decodable { let thread: ThreadNode }
+
+    /// getPostThread is recursive (parent chain + nested replies); a class allows the
+    /// self-reference. `post` is nil for blocked/not-found nodes, which we skip.
+    private final class ThreadNode: Decodable {
+        let post: Post?
+        let parent: ThreadNode?
+        let replies: [ThreadNode]?
+
+        func collect(into posts: inout [Post]) {
+            parent?.collect(into: &posts)
+            if let post { posts.append(post) }
+            for reply in replies ?? [] { reply.collect(into: &posts) }
+        }
     }
     private struct Author: Decodable {
         let did: String
@@ -128,7 +181,9 @@ extension BlueskyClient {
         let text: String
         let createdAt: String
         let facets: [Facet]?
+        let reply: Reply?
     }
+    private struct Reply: Decodable {} // presence marks this post as a reply
     private struct Facet: Decodable {
         let index: FacetIndex
         let features: [FacetFeature]

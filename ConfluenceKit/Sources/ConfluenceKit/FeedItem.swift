@@ -20,15 +20,25 @@ public struct FeedItem: Identifiable, Sendable, Equatable {
     public let isFollowing: Bool
     /// Bluesky follow-record URI (needed to unfollow); nil for Mastodon or when not following.
     public let followURI: String?
+    /// Post id to fetch the conversation for: Bluesky post URI, or Mastodon status id
+    /// (the original status for a boost). Defaults to `rawId`.
+    public let threadID: String
+    /// Number of direct replies, when known — drives the "show thread" affordance.
+    public let replyCount: Int
+    /// Whether this post is itself a reply to another post.
+    public let isReply: Bool
 
     public var id: String { "\(network.rawValue):\(rawId)" }
     /// Identity key for the author across items (follow state is tracked per author).
     public var authorKey: String { "\(network.rawValue):\(authorID)" }
+    /// Whether this post is part of a conversation worth opening.
+    public var hasThread: Bool { replyCount > 0 || isReply }
 
     public init(network: Network, rawId: String, authorID: String = "", authorName: String, authorHandle: String,
                 avatarURL: URL?, createdAt: Date, text: String, attributedText: AttributedString? = nil,
                 imageURLs: [URL] = [], repostedBy: String? = nil,
-                isFollowing: Bool = false, followURI: String? = nil) {
+                isFollowing: Bool = false, followURI: String? = nil,
+                threadID: String? = nil, replyCount: Int = 0, isReply: Bool = false) {
         self.network = network
         self.rawId = rawId
         self.authorID = authorID
@@ -42,6 +52,20 @@ public struct FeedItem: Identifiable, Sendable, Equatable {
         self.repostedBy = repostedBy
         self.isFollowing = isFollowing
         self.followURI = followURI
+        self.threadID = threadID ?? rawId
+        self.replyCount = replyCount
+        self.isReply = isReply
+    }
+}
+
+/// A conversation: every post in the thread in chronological order, plus which one to highlight.
+public struct PostThread: Sendable, Equatable {
+    public let items: [FeedItem]
+    public let focusID: String
+
+    public init(items: [FeedItem], focusID: String) {
+        self.items = items
+        self.focusID = focusID
     }
 }
 
@@ -54,6 +78,13 @@ public struct FeedPage: Sendable, Equatable {
         self.items = items
         self.nextCursor = nextCursor
     }
+}
+
+/// De-duplicates and sorts a thread oldest-first (chronological), tie-breaking by id.
+public func chronological(_ items: [FeedItem]) -> [FeedItem] {
+    var seen = Set<String>()
+    return items.filter { seen.insert($0.id).inserted }
+        .sorted { ($0.createdAt, $0.id) < ($1.createdAt, $1.id) }
 }
 
 /// Merges per-network item lists into one list, newest first, de-duplicated.
