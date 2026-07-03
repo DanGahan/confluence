@@ -30,24 +30,31 @@ struct FeedView: View {
     }
 
     var body: some View {
-        List {
-            if !feed.failedNetworks.isEmpty {
-                failureBanner
+        // ScrollView + LazyVStack + scrollTargetLayout: List doesn't report the top
+        // visible id via .scrollPosition on macOS, which F6 (position save) needs.
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 0) {
+                if !feed.failedNetworks.isEmpty {
+                    failureBanner.padding(.horizontal).padding(.top, 8)
+                }
+                ForEach(feed.items) { item in
+                    FeedRow(item: item)
+                        .padding(.horizontal)
+                        .padding(.vertical, 8)
+                        .onAppear {
+                            // Page each tail at most once, else onAppear chain-loads everything.
+                            guard item.id == feed.items.last?.id, item.id != lastPagedTailID else { return }
+                            lastPagedTailID = item.id
+                            Task { await feed.loadMore() }
+                        }
+                    Divider()
+                }
+                if feed.hasMore && !feed.items.isEmpty {
+                    ProgressView().controlSize(.small).frame(maxWidth: .infinity).padding()
+                }
             }
-            ForEach(feed.items) { item in
-                FeedRow(item: item)
-                    .onAppear {
-                        // Page each tail at most once, else onAppear chain-loads the whole timeline.
-                        guard item.id == feed.items.last?.id, item.id != lastPagedTailID else { return }
-                        lastPagedTailID = item.id
-                        Task { await feed.loadMore() }
-                    }
-            }
-            if feed.hasMore && !feed.items.isEmpty {
-                HStack { Spacer(); ProgressView().controlSize(.small); Spacer() }
-            }
+            .scrollTargetLayout()
         }
-        .listStyle(.inset)
         .scrollPosition(id: $topID, anchor: .top)
         .onChange(of: topID) { _, newID in
             // Debounce: save the topmost visible post's id after scrolling settles.
@@ -59,7 +66,6 @@ struct FeedView: View {
                 position.save(itemID: newID)
             }
         }
-        .refreshable { await feed.refresh() }
         .overlay {
             if feed.items.isEmpty {
                 if feed.isLoading {
