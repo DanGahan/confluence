@@ -285,13 +285,9 @@ private struct FeedRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
             Button { showingProfile = true } label: {
-                AsyncImage(url: item.avatarURL) { image in
-                    image.resizable().scaledToFill()
-                } placeholder: {
-                    Color.secondary.opacity(0.2)
-                }
-                .frame(width: 44, height: 44)
-                .clipShape(Circle())
+                RemoteImage(item.avatarURL) { Color.secondary.opacity(0.2) }
+                    .frame(width: 44, height: 44)
+                    .clipShape(Circle())
             }
             .buttonStyle(.plain)
             .popover(isPresented: $showingProfile, arrowEdge: .trailing) { profilePopover }
@@ -320,14 +316,10 @@ private struct FeedRow: View {
                     // vertical scroll gesture on macOS. Both networks cap posts at 4 images.
                     HStack(spacing: 6) {
                         ForEach(item.imageURLs.prefix(4), id: \.self) { url in
-                            AsyncImage(url: url) { image in
-                                image.resizable().scaledToFill()
-                            } placeholder: {
-                                Color.secondary.opacity(0.15)
-                            }
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 140)
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                            RemoteImage(url) { Color.secondary.opacity(0.15) }
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 140)
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
                         }
                     }
                 }
@@ -347,7 +339,7 @@ private struct FeedRow: View {
     private var profilePopover: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
-                AsyncImage(url: item.avatarURL) { $0.resizable().scaledToFill() } placeholder: { Color.secondary.opacity(0.2) }
+                RemoteImage(item.avatarURL) { Color.secondary.opacity(0.2) }
                     .frame(width: 40, height: 40).clipShape(Circle())
                 VStack(alignment: .leading) {
                     Text(item.authorName).fontWeight(.semibold)
