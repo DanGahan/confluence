@@ -13,7 +13,7 @@ struct FeedDecodingTests {
             {
               "post": {
                 "uri": "at://did:plc:1/app.bsky.feed.post/aaa",
-                "author": {"handle": "alice.bsky.social", "displayName": "Alice", "avatar": "https://cdn/a.jpg"},
+                "author": {"did": "did:plc:alice", "handle": "alice.bsky.social", "displayName": "Alice", "avatar": "https://cdn/a.jpg", "viewer": {"following": "at://did:plc:me/app.bsky.graph.follow/xyz"}},
                 "record": {"text": "hello world", "createdAt": "2026-07-01T10:00:00.000Z"},
                 "embed": {"images": [{"fullsize": "https://cdn/img1.jpg"}]}
               },
@@ -35,6 +35,9 @@ struct FeedDecodingTests {
         #expect(item.text == "hello world")
         #expect(item.imageURLs.map(\.absoluteString) == ["https://cdn/img1.jpg"])
         #expect(item.repostedBy == "Bob")
+        #expect(item.authorID == "did:plc:alice")
+        #expect(item.isFollowing == true)
+        #expect(item.followURI == "at://did:plc:me/app.bsky.graph.follow/xyz")
     }
 
     @Test func blueskyPassesCursorAsQuery() async throws {
@@ -66,20 +69,20 @@ struct FeedDecodingTests {
             "id": "111",
             "created_at": "2026-07-01T09:00:00.000Z",
             "content": "<p>Hello &amp; <a href=\\"x\\">welcome</a></p>",
-            "account": {"display_name": "Carol", "acct": "carol", "avatar": "https://m/c.png"},
+            "account": {"id": "1", "display_name": "Carol", "acct": "carol", "avatar": "https://m/c.png"},
             "media_attachments": [{"type": "image", "url": "https://m/pic.jpg"}]
           },
           {
             "id": "110",
             "created_at": "2026-07-01T08:00:00.000Z",
             "content": "<p>boosted body</p>",
-            "account": {"display_name": "Dave", "acct": "dave", "avatar": "https://m/d.png"},
+            "account": {"id": "2", "display_name": "Dave", "acct": "dave", "avatar": "https://m/d.png"},
             "media_attachments": [],
             "reblog": {
               "id": "999",
               "created_at": "2026-06-30T08:00:00.000Z",
               "content": "<p>original</p>",
-              "account": {"display_name": "Erin", "acct": "erin@other.social", "avatar": "https://m/e.png"},
+              "account": {"id": "3", "display_name": "Erin", "acct": "erin@other.social", "avatar": "https://m/e.png"},
               "media_attachments": []
             }
           }
