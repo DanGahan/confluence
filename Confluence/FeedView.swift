@@ -98,6 +98,7 @@ struct FeedView: View {
             search.setFetchers(makeSearchFetchers())
             await configureComposer()
             await feed.refresh()
+            await seedMastodonFollowState()
             await restoreScrollPosition()
             await notifications.refresh()
             // Poll while this window is frontmost (task is cancelled when accounts change).
@@ -309,6 +310,15 @@ struct FeedView: View {
             }
         }
         return fetchers
+    }
+
+    /// Mastodon timelines omit follow-state; fetch relationships for loaded Mastodon authors.
+    private func seedMastodonFollowState() async {
+        guard let session = mastodon.session else { return }
+        let ids = Array(Set(feed.items.filter { $0.network == .mastodon }.map(\.authorID))).prefix(40)
+        guard !ids.isEmpty else { return }
+        let states = await MastodonClient().relationships(host: session.host, accessToken: session.accessToken, accountIDs: Array(ids))
+        follows.seed([.mastodon: states])
     }
 
     private func configureComposer() async {

@@ -41,6 +41,17 @@ public final class FollowStore {
         self.actions = actions
     }
 
+    /// Seed known follow-state (e.g. Mastodon relationships) without clobbering a pending
+    /// user action for the same author.
+    public func seed(_ states: [Network: [String: Bool]]) {
+        for (network, map) in states {
+            for (authorID, following) in map {
+                let key = "\(network.rawValue):\(authorID)"
+                if overrides[key] == nil { overrides[key] = following }
+            }
+        }
+    }
+
     public func isFollowing(_ item: some Followable) -> Bool {
         overrides[item.authorKey] ?? item.isFollowing
     }
