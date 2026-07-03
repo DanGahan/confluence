@@ -54,7 +54,7 @@ private struct NotificationRow: View {
             Image(systemName: icon)
                 .foregroundStyle(.secondary)
                 .frame(width: 20)
-            AsyncImage(url: item.avatarURL) { $0.resizable().scaledToFill() } placeholder: { Color.secondary.opacity(0.2) }
+            RemoteImage(item.avatarURL) { Color.secondary.opacity(0.2) }
                 .frame(width: 32, height: 32).clipShape(Circle())
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
