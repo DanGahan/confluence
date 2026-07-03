@@ -50,6 +50,40 @@ struct FeedDecodingTests {
         #expect(page.nextCursor == nil)
     }
 
+    @Test func blueskyRepostOrdersByRepostTimeNotOriginal() async throws {
+        // A repost of an old post must sort by when it was reposted, not authored.
+        let json = """
+        {"feed":[{
+          "post": {
+            "uri": "at://old",
+            "author": {"did": "did:x", "handle": "x.bsky.social"},
+            "record": {"text": "ancient", "createdAt": "2023-01-01T00:00:00.000Z"},
+            "indexedAt": "2023-01-01T00:00:00.000Z"
+          },
+          "reason": {"by": {"displayName": "Reposter"}, "indexedAt": "2026-07-01T12:00:00.000Z"}
+        }]}
+        """.data(using: .utf8)!
+        let client = BlueskyClient(session: MockURLProtocol.session { ($0.status(200), json) })
+        let item = try #require(try await client.timeline(accessToken: "t", cursor: nil).items.first)
+        #expect(item.createdAt == ISO8601DateFormatter().date(from: "2026-07-01T12:00:00Z"))
+        #expect(item.repostedBy == "Reposter")
+    }
+
+    @Test func mastodonBoostOrdersByBoostTime() async throws {
+        let json = """
+        [{"id":"1","created_at":"2026-07-01T12:00:00.000Z","content":"<p>wrap</p>",
+          "account":{"id":"9","display_name":"Booster","acct":"booster","avatar":"https://a","note":""},
+          "reblog":{"id":"orig","created_at":"2020-01-01T00:00:00.000Z","content":"<p>old</p>",
+            "account":{"id":"7","display_name":"Author","acct":"author","avatar":"https://b","note":""},"media_attachments":[]},
+          "media_attachments":[]}]
+        """.data(using: .utf8)!
+        let client = MastodonClient(session: MockURLProtocol.session { ($0.status(200), json) })
+        let item = try #require(try await client.homeTimeline(host: "m.social", accessToken: "t", maxId: nil).items.first)
+        #expect(item.createdAt == ISO8601DateFormatter().date(from: "2026-07-01T12:00:00Z"))
+        #expect(item.repostedBy == "Booster")
+        #expect(item.authorName == "Author")
+    }
+
     @Test func blueskyExpiredTokenMapsToInvalidCredentials() async {
         // AT Proto returns 400 ExpiredToken (not 401) for a stale access token.
         let client = BlueskyClient(session: MockURLProtocol.session { request in
