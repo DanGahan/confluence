@@ -384,7 +384,9 @@ private struct FeedRow: View {
                     .clipShape(Circle())
             }
             .buttonStyle(.plain)
-            .popover(isPresented: $showingProfile, arrowEdge: .trailing) { profilePopover }
+            .sheet(isPresented: $showingProfile) {
+                ProfileView(network: item.network, authorID: item.authorID, handle: item.authorHandle)
+            }
 
             VStack(alignment: .leading, spacing: 4) {
                 if let repostedBy = item.repostedBy {
@@ -430,25 +432,6 @@ private struct FeedRow: View {
         .accessibilityAction(named: followLabel) { Task { await follows.toggle(item) } }
     }
 
-    private var profilePopover: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
-                RemoteImage(item.avatarURL) { Color.secondary.opacity(0.2) }
-                    .frame(width: 40, height: 40).clipShape(Circle())
-                VStack(alignment: .leading) {
-                    Text(item.authorName).fontWeight(.semibold)
-                    Text("@\(item.authorHandle)").font(.caption).foregroundStyle(.secondary)
-                }
-            }
-            Button(followLabel, systemImage: isFollowing ? "person.badge.minus" : "person.badge.plus") {
-                Task { await follows.toggle(item) }
-                showingProfile = false
-            }
-            .buttonStyle(.borderedProminent)
-        }
-        .padding()
-        .frame(width: 260)
-    }
 
     private var networkBadge: some View {
         let isBluesky = item.network == .bluesky
