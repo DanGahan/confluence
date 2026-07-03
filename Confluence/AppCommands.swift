@@ -4,19 +4,20 @@ import SwiftUI
 extension FocusedValues {
     @Entry var refreshFeed: (() -> Void)?
     @Entry var scrollFeedToTop: (() -> Void)?
+    @Entry var newPost: (() -> Void)?
 }
 
 /// Standard menu-bar commands. Edit/Window/Help come from SwiftUI automatically.
 struct AppCommands: Commands {
     @FocusedValue(\.refreshFeed) private var refreshFeed
     @FocusedValue(\.scrollFeedToTop) private var scrollFeedToTop
+    @FocusedValue(\.newPost) private var newPost
 
     var body: some Commands {
-        // File → New Post (⌘N). The composer is F8 (deferred), so it's present but disabled.
         CommandGroup(replacing: .newItem) {
-            Button("New Post") {}
+            Button("New Post") { newPost?() }
                 .keyboardShortcut("n")
-                .disabled(true)
+                .disabled(newPost == nil)
         }
         CommandMenu("View") {
             Button("Refresh") { refreshFeed?() }
