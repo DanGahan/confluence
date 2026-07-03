@@ -43,6 +43,7 @@ struct ProfileView: View {
             .toolbar { Button("Done") { dismiss() }.keyboardShortcut(.cancelAction) }
         }
         .frame(width: contentWidth + 32, height: 620)
+        .handleProfileLinks()
         .task { await load() }
     }
 
@@ -121,7 +122,7 @@ private struct ProfilePostRow: View {
             Text(post.createdAt, format: .relative(presentation: .named))
                 .font(.caption).foregroundStyle(.secondary)
             if !post.text.isEmpty {
-                Text(post.text)
+                Text(post.attributedText)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
