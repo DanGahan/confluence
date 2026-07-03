@@ -25,6 +25,20 @@ extension BlueskyClient {
         return FeedPage(items: decoded.feed.compactMap(\.feedItem), nextCursor: decoded.cursor)
     }
 
+    /// `app.bsky.feed.getAuthorFeed` — a single user's posts. Same wire shape as the timeline.
+    public func authorFeed(accessToken: String, actor: String, cursor: String?, limit: Int = 40) async throws -> FeedPage {
+        var components = URLComponents(url: pdsURL.appending(path: "xrpc/app.bsky.feed.getAuthorFeed"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [URLQueryItem(name: "actor", value: actor), URLQueryItem(name: "limit", value: String(limit))]
+            + (cursor.map { [URLQueryItem(name: "cursor", value: $0)] } ?? [])
+        var request = URLRequest(url: components.url!)
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+
+        let (data, response) = try await timelineData(for: request)
+        guard (200..<300).contains(response.statusCode) else { throw BlueskyError.server("Bluesky author feed status \(response.statusCode).") }
+        guard let decoded = try? JSONDecoder().decode(Timeline.self, from: data) else { throw BlueskyError.malformedResponse }
+        return FeedPage(items: decoded.feed.compactMap(\.feedItem), nextCursor: decoded.cursor)
+    }
+
     // Reuses the private URLSession via a tiny internal shim so decoding stays here.
     private func timelineData(for request: URLRequest) async throws -> (Data, HTTPURLResponse) {
         do {

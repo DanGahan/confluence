@@ -1,0 +1,131 @@
+import SwiftUI
+import ConfluenceKit
+
+/// A user's profile: header (avatar, bio, counts, follow) + their recent posts.
+/// Following/followers counts push a FollowListView.
+struct ProfileView: View {
+    @Environment(BlueskyAccountStore.self) private var bluesky
+    @Environment(MastodonAccountStore.self) private var mastodon
+    @Environment(FollowStore.self) private var follows
+    @Environment(\.dismiss) private var dismiss
+
+    let network: Network
+    let authorID: String
+    let handle: String
+
+    @State private var profile: Profile?
+    @State private var posts: [FeedItem] = []
+    @State private var loading = true
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    if let profile {
+                        header(profile)
+                    } else if loading {
+                        ProgressView().frame(maxWidth: .infinity).padding()
+                    } else {
+                        ContentUnavailableView("Profile Unavailable", systemImage: "person.slash")
+                    }
+                    Divider()
+                    ForEach(posts) { ProfilePostRow(post: $0) }
+                    if posts.isEmpty && !loading {
+                        Text("No posts.").foregroundStyle(.secondary).padding()
+                    }
+                }
+                .padding()
+                .frame(maxWidth: 600)
+            }
+            .frame(maxWidth: .infinity)
+            .navigationTitle("@\(handle)")
+            .toolbar { Button("Done") { dismiss() }.keyboardShortcut(.cancelAction) }
+        }
+        .frame(minWidth: 480, minHeight: 560)
+        .task { await load() }
+    }
+
+    @ViewBuilder private func header(_ profile: Profile) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            RemoteImage(profile.avatarURL) { Color.secondary.opacity(0.2) }
+                .frame(width: 64, height: 64).clipShape(Circle())
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Text(profile.name).font(.title3).fontWeight(.semibold)
+                    NetworkBadge(network: profile.network)
+                    Spacer()
+                    Button(follows.isFollowing(profile) ? "Following" : "Follow") {
+                        Task { await follows.toggle(profile) }
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+                Text("@\(profile.handle)").font(.subheadline).foregroundStyle(.secondary)
+                if !profile.bio.isEmpty {
+                    Text(profile.bio).font(.callout).fixedSize(horizontal: false, vertical: true).padding(.top, 2)
+                }
+                HStack(spacing: 16) {
+                    NavigationLink { FollowListView(network: network, authorID: authorID, kind: .following) } label: {
+                        countLabel(profile.followingCount, "Following")
+                    }
+                    NavigationLink { FollowListView(network: network, authorID: authorID, kind: .followers) } label: {
+                        countLabel(profile.followersCount, "Followers")
+                    }
+                    countLabel(profile.postsCount, "Posts").foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 4)
+            }
+        }
+    }
+
+    private func countLabel(_ count: Int, _ label: String) -> some View {
+        HStack(spacing: 4) {
+            Text("\(count)").fontWeight(.semibold)
+            Text(label).foregroundStyle(.secondary)
+        }
+        .font(.callout)
+    }
+
+    private func load() async {
+        loading = true
+        defer { loading = false }
+        switch network {
+        case .bluesky:
+            guard let session = bluesky.session else { return }
+            let client = BlueskyClient()
+            profile = try? await client.profile(accessToken: session.accessJwt, actor: authorID)
+            posts = (try? await client.authorFeed(accessToken: session.accessJwt, actor: authorID, cursor: nil))?.items ?? []
+        case .mastodon:
+            guard let session = mastodon.session else { return }
+            let client = MastodonClient()
+            profile = try? await client.profile(host: session.host, accessToken: session.accessToken, accountID: authorID)
+            posts = (try? await client.accountStatuses(host: session.host, accessToken: session.accessToken, accountID: authorID, maxId: nil))?.items ?? []
+        }
+    }
+}
+
+private struct ProfilePostRow: View {
+    let post: FeedItem
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if let repostedBy = post.repostedBy {
+                Label("Reposted by \(repostedBy)", systemImage: "arrow.2.squarepath")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            Text(post.createdAt, format: .relative(presentation: .named))
+                .font(.caption).foregroundStyle(.secondary)
+            if !post.text.isEmpty { Text(post.text).fixedSize(horizontal: false, vertical: true) }
+            if !post.imageURLs.isEmpty {
+                HStack(spacing: 6) {
+                    ForEach(post.imageURLs.prefix(4), id: \.self) { url in
+                        RemoteImage(url) { Color.secondary.opacity(0.15) }
+                            .frame(maxWidth: .infinity).frame(height: 120)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                    }
+                }
+            }
+            Divider()
+        }
+        .padding(.vertical, 4)
+    }
+}

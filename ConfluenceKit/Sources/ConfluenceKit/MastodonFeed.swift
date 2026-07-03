@@ -32,6 +32,29 @@ extension MastodonClient {
         return FeedPage(items: items, nextCursor: statuses.isEmpty ? nil : statuses.last?.id)
     }
 
+    /// `GET /api/v1/accounts/:id/statuses` — a single account's posts.
+    public func accountStatuses(host: String, accessToken: String, accountID: String, maxId: String?, limit: Int = 40) async throws -> FeedPage {
+        var components = URLComponents()
+        components.scheme = "https"
+        components.host = host
+        components.path = "/api/v1/accounts/\(accountID)/statuses"
+        components.queryItems = [URLQueryItem(name: "limit", value: String(limit))]
+            + (maxId.map { [URLQueryItem(name: "max_id", value: $0)] } ?? [])
+        var request = URLRequest(url: components.url!)
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+
+        let data: Data
+        let response: URLResponse
+        do { (data, response) = try await session.data(for: request) }
+        catch { throw MastodonError.network }
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw MastodonError.server("Mastodon account statuses failed.")
+        }
+        guard let statuses = try? JSONDecoder().decode([Status].self, from: data) else { throw MastodonError.malformedResponse }
+        let items = statuses.compactMap { $0.feedItem(host: host) }
+        return FeedPage(items: items, nextCursor: statuses.isEmpty ? nil : statuses.last?.id)
+    }
+
     // MARK: - Wire format (only the fields we render)
 
     private struct Status: Decodable {
