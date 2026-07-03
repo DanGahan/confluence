@@ -7,12 +7,14 @@ struct FeedView: View {
     @Environment(FollowStore.self) private var follows
     @Environment(NotificationStore.self) private var notifications
     @Environment(SearchStore.self) private var search
+    @Environment(ComposerStore.self) private var composer
     @Environment(\.scenePhase) private var scenePhase
     @State private var feed = FeedStore()
     @State private var showingBlueskyLogin = false
     @State private var showingMastodonLogin = false
     @State private var showingNotifications = false
     @State private var showingSearch = false
+    @State private var showingComposer = false
     @State private var topID: String?
     @State private var didRestore = false
     @State private var saveTask: Task<Void, Never>?
@@ -94,6 +96,7 @@ struct FeedView: View {
             follows.setActions(makeFollowActions())
             notifications.setFetchers(makeNotificationFetchers())
             search.setFetchers(makeSearchFetchers())
+            await configureComposer()
             await feed.refresh()
             await restoreScrollPosition()
             await notifications.refresh()
@@ -109,15 +112,24 @@ struct FeedView: View {
         }
         .focusedSceneValue(\.refreshFeed, refreshAction)
         .focusedSceneValue(\.scrollFeedToTop, scrollToTop)
+        .focusedSceneValue(\.newPost) { showingComposer = true }
         .overlay(alignment: .bottom) { followToast }
         .toolbar { feedToolbar }
         .sheet(isPresented: $showingBlueskyLogin) { BlueskyLoginView() }
         .sheet(isPresented: $showingMastodonLogin) { MastodonLoginView() }
         .sheet(isPresented: $showingNotifications) { NotificationsView() }
         .sheet(isPresented: $showingSearch) { SearchView() }
+        .sheet(isPresented: $showingComposer, onDismiss: {
+            if composer.didPostAll { composer.reset(); Task { await feed.refresh() } }
+        }) { ComposerView() }
     }
 
     @ToolbarContentBuilder private var feedToolbar: some ToolbarContent {
+        ToolbarItem {
+            Button { showingComposer = true } label: { Image(systemName: "square.and.pencil") }
+                .help("New Post")
+                .accessibilityLabel("New Post")
+        }
         ToolbarItem {
             Button { showingSearch = true } label: { Image(systemName: "magnifyingglass") }
                 .keyboardShortcut("f")
@@ -297,6 +309,34 @@ struct FeedView: View {
             }
         }
         return fetchers
+    }
+
+    private func configureComposer() async {
+        var posters: [Network: Poster] = [:]
+        var limits: [Network: Int] = [:]
+        if bluesky.isLoggedIn {
+            let store = bluesky
+            let client = BlueskyClient()
+            posters[.bluesky] = { text in
+                guard let session = await store.session else { throw BlueskyError.invalidCredentials }
+                do {
+                    _ = try await client.post(accessToken: session.accessJwt, repoDID: session.did, text: text)
+                } catch BlueskyError.invalidCredentials {
+                    try await store.refresh()
+                    guard let fresh = await store.session else { throw BlueskyError.invalidCredentials }
+                    _ = try await client.post(accessToken: fresh.accessJwt, repoDID: fresh.did, text: text)
+                }
+            }
+            limits[.bluesky] = 300
+        }
+        if let session = mastodon.session {
+            let client = MastodonClient()
+            posters[.mastodon] = { text in
+                try await client.post(host: session.host, accessToken: session.accessToken, text: text)
+            }
+            limits[.mastodon] = await client.characterLimit(host: session.host)
+        }
+        composer.configure(posters: posters, limits: limits)
     }
 
     @ViewBuilder private var followToast: some View {
