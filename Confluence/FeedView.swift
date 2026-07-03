@@ -5,9 +5,12 @@ struct FeedView: View {
     @Environment(BlueskyAccountStore.self) private var bluesky
     @Environment(MastodonAccountStore.self) private var mastodon
     @Environment(FollowStore.self) private var follows
+    @Environment(NotificationStore.self) private var notifications
+    @Environment(\.scenePhase) private var scenePhase
     @State private var feed = FeedStore()
     @State private var showingBlueskyLogin = false
     @State private var showingMastodonLogin = false
+    @State private var showingNotifications = false
     @State private var lastPagedTailID: String?
     @State private var topID: String?
     @State private var didRestore = false
@@ -78,8 +81,19 @@ struct FeedView: View {
         .task(id: accountsKey) {
             feed.setFetchers(makeFetchers())
             follows.setActions(makeFollowActions())
+            notifications.setFetchers(makeNotificationFetchers())
             await feed.refresh()
             await restoreScrollPosition()
+            await notifications.refresh()
+            // Poll while this window is frontmost (task is cancelled when accounts change).
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(60))
+                if Task.isCancelled { break }
+                if scenePhase == .active { await notifications.refresh() }
+            }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { Task { await notifications.refresh() } }
         }
         .overlay(alignment: .bottom) { followToast }
         .toolbar {
@@ -103,6 +117,22 @@ struct FeedView: View {
                 }
             }
             ToolbarItem {
+                Button { showingNotifications = true } label: {
+                    Image(systemName: notifications.unreadCount > 0 ? "bell.badge.fill" : "bell")
+                        .overlay(alignment: .topTrailing) {
+                            if notifications.unreadCount > 0 {
+                                Text("\(min(notifications.unreadCount, 99))")
+                                    .font(.system(size: 9, weight: .bold))
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, 3).padding(.vertical, 1)
+                                    .background(.red, in: Capsule())
+                                    .offset(x: 8, y: -8)
+                            }
+                        }
+                }
+                .help(notificationsTooltip)
+            }
+            ToolbarItem {
                 Button { Task { await feed.refresh() } } label: { Image(systemName: "arrow.clockwise") }
                     .keyboardShortcut("r")
                     .help("Refresh")
@@ -110,6 +140,15 @@ struct FeedView: View {
         }
         .sheet(isPresented: $showingBlueskyLogin) { BlueskyLoginView() }
         .sheet(isPresented: $showingMastodonLogin) { MastodonLoginView() }
+        .sheet(isPresented: $showingNotifications) { NotificationsView() }
+    }
+
+    private var notificationsTooltip: String {
+        guard notifications.unreadCount > 0 else { return "Notifications" }
+        let parts = notifications.perNetworkUnread
+            .sorted { $0.key.rawValue < $1.key.rawValue }
+            .map { "\($0.key == .bluesky ? "Bluesky" : "Mastodon"): \($0.value)" }
+        return "Notifications — " + parts.joined(separator: ", ")
     }
 
     private var failureBanner: some View {
@@ -189,6 +228,31 @@ struct FeedView: View {
             )
         }
         return actions
+    }
+
+    private func makeNotificationFetchers() -> [Network: NotificationFetcher] {
+        var fetchers: [Network: NotificationFetcher] = [:]
+        if bluesky.isLoggedIn {
+            let store = bluesky
+            let client = BlueskyClient()
+            fetchers[.bluesky] = {
+                guard let token = await store.session?.accessJwt else { throw BlueskyError.invalidCredentials }
+                do {
+                    return try await client.notifications(accessToken: token)
+                } catch BlueskyError.invalidCredentials {
+                    try await store.refresh()
+                    guard let fresh = await store.session?.accessJwt else { throw BlueskyError.invalidCredentials }
+                    return try await client.notifications(accessToken: fresh)
+                }
+            }
+        }
+        if let session = mastodon.session {
+            let client = MastodonClient()
+            fetchers[.mastodon] = {
+                try await client.notifications(host: session.host, accessToken: session.accessToken)
+            }
+        }
+        return fetchers
     }
 
     @ViewBuilder private var followToast: some View {
