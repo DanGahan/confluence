@@ -6,6 +6,8 @@ struct SearchView: View {
     @Environment(FollowStore.self) private var follows
     @Environment(\.dismiss) private var dismiss
     @State private var query = ""
+    @State private var showPeople = true
+    @State private var showPosts = true
     @FocusState private var fieldFocused: Bool
 
     var body: some View {
@@ -24,7 +26,15 @@ struct SearchView: View {
                 }
                 Button("Done") { dismiss() }.keyboardShortcut(.cancelAction)
             }
-            .padding()
+            .padding([.horizontal, .top])
+            HStack(spacing: 8) {
+                Toggle("People", isOn: $showPeople).toggleStyle(.button)
+                Toggle("Posts", isOn: $showPosts).toggleStyle(.button)
+                Spacer()
+            }
+            .controlSize(.small)
+            .padding([.horizontal, .top], 8)
+            .padding(.bottom, 8)
             Divider()
             content
         }
@@ -47,13 +57,15 @@ struct SearchView: View {
                     Label("\(names) search failed.", systemImage: "exclamationmark.triangle.fill")
                         .font(.caption).foregroundStyle(.secondary)
                 }
-                if !search.people.isEmpty {
-                    // Cap people so posts stay reachable — search returns up to 25 per network.
+                if showPeople && !search.people.isEmpty {
                     Section("People") {
-                        ForEach(search.people.prefix(8)) { person in PersonRow(person: person) }
+                        // Cap people only when posts are also shown, so posts stay reachable.
+                        ForEach(showPosts ? Array(search.people.prefix(8)) : search.people) { person in
+                            PersonRow(person: person)
+                        }
                     }
                 }
-                if !search.posts.isEmpty {
+                if showPosts && !search.posts.isEmpty {
                     Section("Posts") {
                         ForEach(search.posts) { post in SearchPostRow(post: post) }
                     }
