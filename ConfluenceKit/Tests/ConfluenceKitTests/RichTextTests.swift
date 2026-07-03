@@ -55,6 +55,24 @@ struct RichTextTests {
         #expect(links.contains { $0.absoluteString == "https://ex.com" }) // link -> web
     }
 
+    // MARK: Auto-linking bare URLs
+
+    @Test func autolinkAddsLinkToBareURL() {
+        let attr = autolinked(AttributedString("see https://example.com/story now"))
+        let linked = attr.runs.first { $0.link != nil }
+        #expect(linked.map { String(attr[$0.range].characters) } == "https://example.com/story")
+        #expect(linked?.link?.absoluteString == "https://example.com/story")
+    }
+
+    @Test func autolinkDoesNotOverwriteExistingLink() {
+        // A facet already linked the truncated display text to the full URL; autolink must
+        // not clobber it with the visible (partial) URL.
+        let spans = [FacetSpan(start: 0, end: 20, url: URL(string: "https://example.com/full-story"))]
+        let attr = autolinked(blueskyRichText(text: "https://example.co/x", spans: spans))
+        let links = attr.runs.compactMap { $0.link?.absoluteString }
+        #expect(links == ["https://example.com/full-story"])
+    }
+
     @Test func mastodonStripsTagsAndDecodesEntities() {
         let attr = mastodonRichText(html: "<p>a &amp; b</p><p>line2</p>", mentions: [:])
         #expect(String(attr.characters) == "a & b\n\nline2")

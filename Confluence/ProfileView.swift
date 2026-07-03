@@ -112,8 +112,10 @@ struct ProfileView: View {
 }
 
 private struct ProfilePostRow: View {
+    @Environment(\.openURL) private var openURL
     let post: FeedItem
     @State private var showingThread = false
+    @State private var lightbox: LightboxItem?
     private var threadLabel: String {
         switch post.replyCount {
         case 0: "Show thread"
@@ -130,16 +132,19 @@ private struct ProfilePostRow: View {
             Text(post.createdAt, format: .relative(presentation: .named))
                 .font(.caption).foregroundStyle(.secondary)
             if !post.text.isEmpty {
-                Text(post.attributedText)
-                    .fixedSize(horizontal: false, vertical: true)
+                RichTextLabel(attributed: post.attributedText, openURL: openURL)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             if !post.imageURLs.isEmpty {
                 HStack(spacing: 6) {
-                    ForEach(post.imageURLs.prefix(4), id: \.self) { url in
-                        RemoteImage(url) { Color.secondary.opacity(0.15) }
-                            .frame(maxWidth: .infinity).frame(height: 120)
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                    let images = Array(post.imageURLs.prefix(4))
+                    ForEach(Array(images.enumerated()), id: \.element) { i, url in
+                        Button { lightbox = LightboxItem(urls: images, start: i) } label: {
+                            RemoteImage(url) { Color.secondary.opacity(0.15) }
+                                .frame(maxWidth: .infinity).frame(height: 120)
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
             }
@@ -154,5 +159,6 @@ private struct ProfilePostRow: View {
         }
         .padding(.vertical, 4)
         .sheet(isPresented: $showingThread) { ThreadView(item: post) }
+        .sheet(item: $lightbox) { ImageLightbox(item: $0) }
     }
 }

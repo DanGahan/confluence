@@ -96,9 +96,8 @@ extension BlueskyClient {
             return post.makeFeedItem(orderDate: createdAt, repostedBy: reason?.by?.displayName)
         }
 
-        static func attributed(from record: Record) -> AttributedString? {
-            guard let facets = record.facets, !facets.isEmpty else { return nil }
-            let spans: [FacetSpan] = facets.compactMap { facet in
+        static func attributed(from record: Record) -> AttributedString {
+            let spans: [FacetSpan] = (record.facets ?? []).compactMap { facet in
                 guard let feature = facet.features.first else { return nil }
                 let url: URL?
                 switch feature.type {
@@ -111,7 +110,9 @@ extension BlueskyClient {
                 }
                 return FacetSpan(start: facet.index.byteStart, end: facet.index.byteEnd, url: url)
             }
-            return spans.isEmpty ? nil : blueskyRichText(text: record.text, spans: spans)
+            let base = spans.isEmpty ? AttributedString(record.text) : blueskyRichText(text: record.text, spans: spans)
+            // Facets cover most links; autolink catches bare URLs in posts that carry none.
+            return autolinked(base)
         }
     }
 
