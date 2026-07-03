@@ -113,6 +113,7 @@ struct ProfileView: View {
 
 private struct ProfilePostRow: View {
     let post: FeedItem
+    @State private var lightbox: LightboxItem?
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             if let repostedBy = post.repostedBy {
@@ -128,15 +129,20 @@ private struct ProfilePostRow: View {
             }
             if !post.imageURLs.isEmpty {
                 HStack(spacing: 6) {
-                    ForEach(post.imageURLs.prefix(4), id: \.self) { url in
-                        RemoteImage(url) { Color.secondary.opacity(0.15) }
-                            .frame(maxWidth: .infinity).frame(height: 120)
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                    let images = Array(post.imageURLs.prefix(4))
+                    ForEach(Array(images.enumerated()), id: \.element) { i, url in
+                        Button { lightbox = LightboxItem(urls: images, start: i) } label: {
+                            RemoteImage(url) { Color.secondary.opacity(0.15) }
+                                .frame(maxWidth: .infinity).frame(height: 120)
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
             }
             Divider()
         }
         .padding(.vertical, 4)
+        .sheet(item: $lightbox) { ImageLightbox(item: $0) }
     }
 }
