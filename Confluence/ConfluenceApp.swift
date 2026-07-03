@@ -27,6 +27,7 @@ struct ConfluenceApp: App {
                 .environment(notifications)
         }
         .windowResizability(.contentMinSize)
+        .commands { AppCommands() }
 
         Settings {
             SettingsView()
