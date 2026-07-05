@@ -22,8 +22,7 @@ struct ActorRow: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            RemoteImage(actor.avatarURL) { Color.secondary.opacity(0.2) }
-                .frame(width: 40, height: 40).clipShape(Circle())
+            Avatar(url: actor.avatarURL, size: 40)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(actor.name).fontWeight(.semibold).lineLimit(1)

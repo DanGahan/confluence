@@ -83,8 +83,7 @@ private struct ThreadPostRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
             Button { showingProfile = true } label: {
-                RemoteImage(post.avatarURL) { Color.secondary.opacity(0.2) }
-                    .frame(width: 40, height: 40).clipShape(Circle())
+                Avatar(url: post.avatarURL, size: 40)
             }
             .buttonStyle(.plain)
             .sheet(isPresented: $showingProfile) {

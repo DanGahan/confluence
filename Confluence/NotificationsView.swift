@@ -54,8 +54,7 @@ private struct NotificationRow: View {
             Image(systemName: icon)
                 .foregroundStyle(.secondary)
                 .frame(width: 20)
-            RemoteImage(item.avatarURL) { Color.secondary.opacity(0.2) }
-                .frame(width: 32, height: 32).clipShape(Circle())
+            Avatar(url: item.avatarURL, size: 32)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(item.actorName).fontWeight(.semibold).lineLimit(1)
