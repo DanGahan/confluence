@@ -9,10 +9,10 @@ struct ComposerView: View {
     var body: some View {
         @Bindable var composer = composerStore
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
+            HStack(spacing: 10) {
+                SheetCloseButton { dismiss() }
                 Text("New Post").font(.headline)
                 Spacer()
-                Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
             }
 
             TextEditor(text: $composer.text)

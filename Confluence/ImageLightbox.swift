@@ -42,16 +42,8 @@ struct ImageLightbox: View {
             }
         }
         .frame(minWidth: 480, idealWidth: 900, minHeight: 360, idealHeight: 680)
-        .overlay(alignment: .topTrailing) {
-            Button { dismiss() } label: {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.title2)
-                    .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(.white)
-            }
-            .buttonStyle(.plain)
-            .padding(12)
-            .keyboardShortcut(.cancelAction)
+        .overlay(alignment: .topLeading) {
+            SheetCloseButton { dismiss() }.padding(12)
         }
     }
 
