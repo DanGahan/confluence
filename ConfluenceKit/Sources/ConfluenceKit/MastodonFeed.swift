@@ -112,9 +112,10 @@ extension MastodonClient {
         let reblog: Box?
         let repliesCount: Int?
         let inReplyToId: String?
+        let url: String?
 
         enum CodingKeys: String, CodingKey {
-            case id, content, account, mentions, reblog
+            case id, content, account, mentions, reblog, url
             case createdAt = "created_at"
             case mediaAttachments = "media_attachments"
             case repliesCount = "replies_count"
@@ -158,7 +159,8 @@ extension MastodonClient {
                 repostedBy: boostedBy,
                 threadID: id, // the original status id (for a boost this is the reblog's id)
                 replyCount: repliesCount ?? 0,
-                isReply: inReplyToId != nil
+                isReply: inReplyToId != nil,
+                postURL: url.flatMap { URL(string: $0) }
             )
         }
 
