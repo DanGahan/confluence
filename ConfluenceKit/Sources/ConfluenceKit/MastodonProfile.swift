@@ -14,6 +14,18 @@ extension MastodonClient {
         )
     }
 
+    /// `GET /api/v1/accounts/verify_credentials` — the signed-in user's own account.
+    public func currentAccount(host: String, accessToken: String) async throws -> Profile {
+        let data = try await get(host: host, accessToken: accessToken, path: "/api/v1/accounts/verify_credentials", items: [])
+        guard let a = try? JSONDecoder().decode(Account.self, from: data) else { throw MastodonError.malformedResponse }
+        return Profile(
+            network: .mastodon, authorID: a.id, name: a.displayName.isEmpty ? a.acct : a.displayName,
+            handle: a.acct.contains("@") ? a.acct : "\(a.acct)@\(host)", avatarURL: URL(string: a.avatar),
+            bio: htmlToPlainText(a.note), followersCount: a.followersCount ?? 0, followingCount: a.followingCount ?? 0,
+            postsCount: a.statusesCount ?? 0, isFollowing: false, followURI: nil
+        )
+    }
+
     /// `GET /api/v1/accounts/:id/following` or `/followers`.
     public func followList(host: String, accessToken: String, accountID: String, kind: FollowListKind, limit: Int = 50) async throws -> [SearchActor] {
         let path = "/api/v1/accounts/\(accountID)/\(kind == .following ? "following" : "followers")"

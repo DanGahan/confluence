@@ -16,6 +16,9 @@ import AppKit
 struct RichTextLabel: NSViewRepresentable {
     let attributed: AttributedString
     let openURL: OpenURLAction
+    var fontName: String = PostAppearance.defaultName
+    var fontSize: Double = PostAppearance.defaultSize
+    var linkColorHex: String = PostAppearance.defaultLinkColorHex
 
     func makeCoordinator() -> Coordinator { Coordinator(openURL: openURL) }
 
@@ -51,7 +54,11 @@ struct RichTextLabel: NSViewRepresentable {
 
     func updateNSView(_ tv: LinkTextView, context: Context) {
         context.coordinator.openURL = openURL
-        tv.textStorage?.setAttributedString(Self.nsAttributed(attributed))
+        tv.linkTextAttributes = [
+            NSAttributedString.Key.foregroundColor: PostAppearance.nsLinkColor(hex: linkColorHex),
+            NSAttributedString.Key.cursor: NSCursor.pointingHand,
+        ]
+        tv.textStorage?.setAttributedString(Self.nsAttributed(attributed, font: PostAppearance.nsFont(name: fontName, size: fontSize)))
     }
 
     func sizeThatFits(_ proposal: ProposedViewSize, nsView tv: LinkTextView, context: Context) -> CGSize? {
@@ -62,11 +69,11 @@ struct RichTextLabel: NSViewRepresentable {
         return CGSize(width: width, height: ceil(lm.usedRect(for: container).height))
     }
 
-    private static func nsAttributed(_ attributed: AttributedString) -> NSAttributedString {
+    private static func nsAttributed(_ attributed: AttributedString, font: NSFont) -> NSAttributedString {
         let ns = NSMutableAttributedString(attributedString: NSAttributedString(attributed))
         let full = NSRange(location: 0, length: ns.length)
         // Base style; link runs keep their `.link` and display via linkTextAttributes.
-        ns.addAttribute(.font, value: NSFont.preferredFont(forTextStyle: .body), range: full)
+        ns.addAttribute(.font, value: font, range: full)
         ns.addAttribute(.foregroundColor, value: NSColor.labelColor, range: full)
         return ns
     }

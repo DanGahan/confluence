@@ -68,6 +68,19 @@ struct ProfileDecodingTests {
         #expect(p.handle == "carol@m.social")
     }
 
+    @Test func mastodonCurrentAccountUsesVerifyCredentials() async throws {
+        let client = MastodonClient(session: MockURLProtocol.session { request in
+            #expect(request.url?.path == "/api/v1/accounts/verify_credentials")
+            #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer tok")
+            let json = #"{"id":"1","display_name":"Me","acct":"me","avatar":"https://a/me.png","note":"","followers_count":0,"following_count":0,"statuses_count":0}"#
+            return (request.status(200), json.data(using: .utf8)!)
+        })
+        let p = try await client.currentAccount(host: "m.social", accessToken: "tok")
+        #expect(p.name == "Me")
+        #expect(p.handle == "me@m.social")
+        #expect(p.avatarURL?.absoluteString == "https://a/me.png")
+    }
+
     @Test func mastodonFollowingListDecodes() async throws {
         let client = MastodonClient(session: MockURLProtocol.session { request in
             #expect(request.url?.path == "/api/v1/accounts/9/following")

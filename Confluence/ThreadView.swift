@@ -70,6 +70,9 @@ struct ThreadView: View {
 
 private struct ThreadPostRow: View {
     @Environment(FollowStore.self) private var follows
+    @AppStorage(PostAppearance.fontNameKey) private var fontName = PostAppearance.defaultName
+    @AppStorage(PostAppearance.fontSizeKey) private var fontSize = PostAppearance.defaultSize
+    @AppStorage(PostAppearance.linkColorKey) private var linkColorHex = PostAppearance.defaultLinkColorHex
     let post: FeedItem
     let isFocus: Bool
     @State private var showingProfile = false
@@ -101,6 +104,8 @@ private struct ThreadPostRow: View {
                 }
                 if !post.text.isEmpty {
                     Text(post.attributedText).textSelection(.enabled)
+                        .font(PostAppearance.font(name: fontName, size: fontSize))
+                        .tint(PostAppearance.linkColor(hex: linkColorHex))
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 if !post.imageURLs.isEmpty {

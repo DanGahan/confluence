@@ -112,6 +112,9 @@ struct ProfileView: View {
 
 private struct ProfilePostRow: View {
     @Environment(\.openURL) private var openURL
+    @AppStorage(PostAppearance.fontNameKey) private var fontName = PostAppearance.defaultName
+    @AppStorage(PostAppearance.fontSizeKey) private var fontSize = PostAppearance.defaultSize
+    @AppStorage(PostAppearance.linkColorKey) private var linkColorHex = PostAppearance.defaultLinkColorHex
     let post: FeedItem
     @State private var showingThread = false
     @State private var lightbox: LightboxItem?
@@ -131,7 +134,7 @@ private struct ProfilePostRow: View {
             Text(post.createdAt, format: .relative(presentation: .named))
                 .font(.caption).foregroundStyle(.secondary)
             if !post.text.isEmpty {
-                RichTextLabel(attributed: post.attributedText, openURL: openURL)
+                RichTextLabel(attributed: post.attributedText, openURL: openURL, fontName: fontName, fontSize: fontSize, linkColorHex: linkColorHex)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             if !post.imageURLs.isEmpty {

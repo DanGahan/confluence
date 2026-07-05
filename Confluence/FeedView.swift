@@ -458,6 +458,9 @@ private struct FeedRow: View {
     @Environment(FollowStore.self) private var follows
     @Environment(PostActionStore.self) private var postActions
     @Environment(\.openURL) private var openURL
+    @AppStorage(PostAppearance.fontNameKey) private var fontName = PostAppearance.defaultName
+    @AppStorage(PostAppearance.fontSizeKey) private var fontSize = PostAppearance.defaultSize
+    @AppStorage(PostAppearance.linkColorKey) private var linkColorHex = PostAppearance.defaultLinkColorHex
     let item: FeedItem
     @State private var showingProfile = false
     @State private var showingThread = false
@@ -505,7 +508,7 @@ private struct FeedRow: View {
                         .lineLimit(1)
                 }
                 if !item.text.isEmpty {
-                    RichTextLabel(attributed: item.attributedText, openURL: openURL)
+                    RichTextLabel(attributed: item.attributedText, openURL: openURL, fontName: fontName, fontSize: fontSize, linkColorHex: linkColorHex)
                 }
                 if !item.imageURLs.isEmpty {
                     // Non-scrolling row — a nested horizontal ScrollView steals the List's
