@@ -24,6 +24,15 @@ public enum ProfileLink {
               let id = items.first(where: { $0.name == "id" })?.value, !id.isEmpty else { return nil }
         return (network, id, items.first(where: { $0.name == "handle" })?.value ?? "")
     }
+
+    /// A `https://bsky.app/profile/{handle}` web URL → the handle, so it can open in ProfileView
+    /// instead of the Bluesky app. Post/feed/list sub-paths return nil (they open normally).
+    public static func blueskyWebProfileHandle(_ url: URL) -> String? {
+        guard let host = url.host, host == "bsky.app" || host == "www.bsky.app" else { return nil }
+        let parts = url.pathComponents.filter { $0 != "/" }
+        guard parts.count == 2, parts[0] == "profile", !parts[1].isEmpty else { return nil }
+        return parts[1]
+    }
 }
 
 /// A run of text with an optional link. Assembled into an AttributedString whose `.link`
@@ -136,7 +145,8 @@ func mastodonRichText(html: String, mentions: [String: URL]) -> AttributedString
             let href = htmlAttribute("href", in: tag)
             if let aClose = html.range(of: "</a>", options: .caseInsensitive, range: html.index(after: close)..<html.endIndex) {
                 let inner = decodeHTMLEntities(stripTags(String(html[html.index(after: close)..<aClose.lowerBound])))
-                let url = href.flatMap { mentions[$0] } ?? href.flatMap { URL(string: $0) }
+                // href entities (e.g. &amp; in query strings) must be decoded before URL().
+                let url = href.flatMap { mentions[$0] } ?? href.flatMap { URL(string: decodeHTMLEntities($0)) }
                 runs.append(LinkRun(text: inner, url: url))
                 i = aClose.upperBound
             } else {
