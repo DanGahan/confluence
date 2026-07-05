@@ -1,6 +1,9 @@
 import SwiftUI
 import ConfluenceKit
 
+/// Which network(s) the feed shows. Filtering is client-side over the already-merged list.
+enum FeedFilter { case both, bluesky, mastodon }
+
 struct FeedView: View {
     @Environment(BlueskyAccountStore.self) private var bluesky
     @Environment(MastodonAccountStore.self) private var mastodon
@@ -15,6 +18,7 @@ struct FeedView: View {
     @State private var showingNotifications = false
     @State private var showingSearch = false
     @State private var showingComposer = false
+    @State private var networkFilter: FeedFilter = .both
     @State private var topID: String?
     @State private var didRestore = false
     @State private var saveTask: Task<Void, Never>?
@@ -24,13 +28,34 @@ struct FeedView: View {
         "\(bluesky.session?.did ?? "-")|\(mastodon.session?.host ?? "-")"
     }
 
+    private var bothConnected: Bool { bluesky.isLoggedIn && mastodon.isLoggedIn }
+
+    /// Feed items after applying the network filter (client-side over the merged list).
+    /// Filtering only applies when both networks are connected; otherwise there's one network.
+    private var visibleItems: [FeedItem] {
+        guard bothConnected else { return feed.items }
+        switch networkFilter {
+        case .both: return feed.items
+        case .bluesky: return feed.items.filter { $0.network == .bluesky }
+        case .mastodon: return feed.items.filter { $0.network == .mastodon }
+        }
+    }
+
+    private var filterHelp: String {
+        switch networkFilter {
+        case .both: "Showing both networks"
+        case .bluesky: "Showing Bluesky only"
+        case .mastodon: "Showing Mastodon only"
+        }
+    }
+
     private var isScrolledAway: Bool {
-        guard let topID, let first = feed.items.first else { return false }
+        guard let topID, let first = visibleItems.first else { return false }
         return topID != first.id
     }
 
     private func scrollToTop() {
-        guard let first = feed.items.first else { return }
+        guard let first = visibleItems.first else { return }
         withAnimation { topID = first.id }
         Task { await feed.refresh() } // fresh-content check once at top
     }
@@ -45,13 +70,13 @@ struct FeedView: View {
                 if !feed.failedNetworks.isEmpty {
                     failureBanner.padding(.horizontal).padding(.top, 8)
                 }
-                ForEach(feed.items) { item in
+                ForEach(visibleItems) { item in
                     FeedRow(item: item)
                         .padding(.horizontal)
                         .padding(.vertical, 8)
                     Divider()
                 }
-                if feed.hasMore && !feed.items.isEmpty {
+                if feed.hasMore && !visibleItems.isEmpty {
                     ProgressView().controlSize(.small).frame(maxWidth: .infinity).padding()
                 }
             }
@@ -83,7 +108,7 @@ struct FeedView: View {
     var body: some View {
         feedScroll
         .overlay {
-            if feed.items.isEmpty {
+            if visibleItems.isEmpty {
                 if feed.isLoading {
                     ProgressView()
                 } else {
@@ -140,14 +165,21 @@ struct FeedView: View {
         }
         ToolbarItem {
             Menu {
+                if bothConnected {
+                    Picker("Show", selection: $networkFilter) {
+                        Label("Both Networks", systemImage: "person.2").tag(FeedFilter.both)
+                        Label("Bluesky", systemImage: "person").tag(FeedFilter.bluesky)
+                        Label("Mastodon", systemImage: "person").tag(FeedFilter.mastodon)
+                    }
+                    .pickerStyle(.inline)
+                }
                 if !bluesky.isLoggedIn { Button("Add Bluesky Account") { showingBlueskyLogin = true } }
                 if !mastodon.isLoggedIn { Button("Add Mastodon Account") { showingMastodonLogin = true } }
-                if bluesky.isLoggedIn && mastodon.isLoggedIn { Text("Both accounts connected") }
             } label: {
-                Image(systemName: "person.crop.circle")
+                Image(systemName: (networkFilter == .both && bothConnected) ? "person.2" : "person")
             }
-            .help("Accounts")
-            .accessibilityLabel("Accounts")
+            .help(filterHelp)
+            .accessibilityLabel(filterHelp)
         }
         if isScrolledAway {
             ToolbarItem {
