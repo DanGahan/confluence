@@ -390,9 +390,7 @@ private struct FeedRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
             Button { showingProfile = true } label: {
-                RemoteImage(item.avatarURL) { Color.secondary.opacity(0.2) }
-                    .frame(width: 44, height: 44)
-                    .clipShape(Circle())
+                Avatar(url: item.avatarURL, size: 44)
             }
             .buttonStyle(.plain)
             .sheet(isPresented: $showingProfile) {

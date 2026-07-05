@@ -83,8 +83,7 @@ private struct PersonRow: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            RemoteImage(person.avatarURL) { Color.secondary.opacity(0.2) }
-                .frame(width: 40, height: 40).clipShape(Circle())
+            Avatar(url: person.avatarURL, size: 40)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(person.name).fontWeight(.semibold).lineLimit(1)
@@ -110,8 +109,7 @@ private struct SearchPostRow: View {
     let post: FeedItem
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
-            RemoteImage(post.avatarURL) { Color.secondary.opacity(0.2) }
-                .frame(width: 32, height: 32).clipShape(Circle())
+            Avatar(url: post.avatarURL, size: 32)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(post.authorName).fontWeight(.semibold).lineLimit(1)

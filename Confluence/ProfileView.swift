@@ -49,8 +49,7 @@ struct ProfileView: View {
 
     @ViewBuilder private func header(_ profile: Profile) -> some View {
         HStack(alignment: .top, spacing: 12) {
-            RemoteImage(profile.avatarURL) { Color.secondary.opacity(0.2) }
-                .frame(width: 64, height: 64).clipShape(Circle())
+            Avatar(url: profile.avatarURL, size: 64)
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
                     Text(profile.name).font(.title3).fontWeight(.semibold)
