@@ -113,6 +113,9 @@ private struct ThreadPostRow: View {
                         }
                     }
                 }
+                if let card = post.linkCard {
+                    LinkCardView(card: card)
+                }
             }
         }
         .padding(.vertical, 8)

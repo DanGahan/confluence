@@ -1,5 +1,20 @@
 import Foundation
 
+/// A shared-link preview attached to a post (Bluesky `app.bsky.embed.external`).
+public struct LinkCard: Sendable, Equatable {
+    public let url: URL
+    public let title: String
+    public let description: String
+    public let thumbURL: URL?
+
+    public init(url: URL, title: String, description: String, thumbURL: URL?) {
+        self.url = url
+        self.title = title
+        self.description = description
+        self.thumbURL = thumbURL
+    }
+}
+
 /// A single post in the combined feed, normalized across networks.
 public struct FeedItem: Identifiable, Sendable, Equatable {
     public let network: Network
@@ -14,6 +29,8 @@ public struct FeedItem: Identifiable, Sendable, Equatable {
     /// Rich version of `text` with `.link` runs for URLs and @-mentions. Defaults to plain text.
     public let attributedText: AttributedString
     public let imageURLs: [URL]
+    /// A shared-link preview card, when the post embeds one and has no images.
+    public let linkCard: LinkCard?
     /// Display name of the reposter/booster, if this appeared via a repost/boost.
     public let repostedBy: String?
     /// Whether the signed-in user already follows the author, when known at fetch time.
@@ -36,7 +53,7 @@ public struct FeedItem: Identifiable, Sendable, Equatable {
 
     public init(network: Network, rawId: String, authorID: String = "", authorName: String, authorHandle: String,
                 avatarURL: URL?, createdAt: Date, text: String, attributedText: AttributedString? = nil,
-                imageURLs: [URL] = [], repostedBy: String? = nil,
+                imageURLs: [URL] = [], linkCard: LinkCard? = nil, repostedBy: String? = nil,
                 isFollowing: Bool = false, followURI: String? = nil,
                 threadID: String? = nil, replyCount: Int = 0, isReply: Bool = false) {
         self.network = network
@@ -49,6 +66,7 @@ public struct FeedItem: Identifiable, Sendable, Equatable {
         self.text = text
         self.attributedText = attributedText ?? AttributedString(text)
         self.imageURLs = imageURLs
+        self.linkCard = linkCard
         self.repostedBy = repostedBy
         self.isFollowing = isFollowing
         self.followURI = followURI
