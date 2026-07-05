@@ -30,6 +30,7 @@ struct LinkCardView: View {
             .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.quaternary))
         }
         .buttonStyle(.plain)
+        .pointerStyle(.link) // pointing hand: the card behaves like a link
         .accessibilityLabel("Link: \(card.title), \(card.url.host ?? "")")
     }
 }

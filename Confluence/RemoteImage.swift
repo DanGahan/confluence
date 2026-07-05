@@ -71,11 +71,18 @@ struct RemoteImage<Placeholder: View>: View {
     var body: some View {
         Group {
             if let image {
-                Image(nsImage: image).resizable().scaledToFill()
+                // Contain the scaledToFill overflow: a bare Image renders (and hit-tests!)
+                // beyond its frame — .clipShape hides the spill visually but the invisible
+                // overflow still swallows clicks on whatever sits above/below (e.g. a link
+                // on the last text line right above a post image, #69).
+                Color.clear
+                    .overlay(Image(nsImage: image).resizable().scaledToFill())
+                    .clipped()
             } else {
                 placeholder
             }
         }
+        .contentShape(Rectangle()) // hit area = exactly this view's frame
         .task(id: url) { await load() }
     }
 
