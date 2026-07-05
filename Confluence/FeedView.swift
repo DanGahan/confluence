@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import ConfluenceKit
 
 /// Which network(s) the feed shows. Filtering is client-side over the already-merged list.
@@ -11,6 +12,7 @@ struct FeedView: View {
     @Environment(NotificationStore.self) private var notifications
     @Environment(SearchStore.self) private var search
     @Environment(ComposerStore.self) private var composer
+    @Environment(PostActionStore.self) private var postActions
     @Environment(\.scenePhase) private var scenePhase
     @State private var feed = FeedStore()
     @State private var showingBlueskyLogin = false
@@ -120,6 +122,7 @@ struct FeedView: View {
         .task(id: accountsKey) {
             feed.setFetchers(makeFetchers())
             follows.setActions(makeFollowActions())
+            postActions.setActions(makePostActions())
             notifications.setFetchers(makeNotificationFetchers())
             search.setFetchers(makeSearchFetchers())
             await configureComposer()
@@ -313,6 +316,46 @@ struct FeedView: View {
         return actions
     }
 
+    private func makePostActions() -> [Network: PostActions] {
+        var actions: [Network: PostActions] = [:]
+        if bluesky.isLoggedIn {
+            let store = bluesky
+            let client = BlueskyClient()
+            // Bluesky access tokens expire; refresh once and retry on invalidCredentials.
+            @Sendable func withSession<T>(_ body: @Sendable (BlueskySession) async throws -> T) async throws -> T {
+                guard let session = await store.session else { throw BlueskyError.invalidCredentials }
+                do { return try await body(session) }
+                catch BlueskyError.invalidCredentials {
+                    try await store.refresh()
+                    guard let fresh = await store.session else { throw BlueskyError.invalidCredentials }
+                    return try await body(fresh)
+                }
+            }
+            actions[.bluesky] = PostActions(
+                repost: { item in
+                    guard let cid = item.cid else { return }
+                    _ = try await withSession { try await client.repost(accessToken: $0.accessJwt, repoDID: $0.did, uri: item.rawId, cid: cid) }
+                },
+                like: { item in
+                    guard let cid = item.cid else { return }
+                    _ = try await withSession { try await client.like(accessToken: $0.accessJwt, repoDID: $0.did, uri: item.rawId, cid: cid) }
+                },
+                block: { item in
+                    _ = try await withSession { try await client.block(accessToken: $0.accessJwt, repoDID: $0.did, subjectDID: item.authorID) }
+                }
+            )
+        }
+        if let session = mastodon.session {
+            let client = MastodonClient()
+            actions[.mastodon] = PostActions(
+                repost: { item in try await client.reblog(host: session.host, accessToken: session.accessToken, statusID: item.threadID) },
+                like: { item in try await client.favourite(host: session.host, accessToken: session.accessToken, statusID: item.threadID) },
+                block: { item in try await client.block(host: session.host, accessToken: session.accessToken, accountID: item.authorID) }
+            )
+        }
+        return actions
+    }
+
     private func makeNotificationFetchers() -> [Network: NotificationFetcher] {
         var fetchers: [Network: NotificationFetcher] = [:]
         if bluesky.isLoggedIn {
@@ -395,7 +438,7 @@ struct FeedView: View {
     }
 
     @ViewBuilder private var followToast: some View {
-        if let message = follows.lastError {
+        if let message = follows.lastError ?? postActions.lastError {
             Text(message)
                 .font(.callout)
                 .padding(.horizontal, 14).padding(.vertical, 10)
@@ -405,6 +448,7 @@ struct FeedView: View {
                 .task {
                     try? await Task.sleep(for: .seconds(3))
                     follows.lastError = nil
+                    postActions.lastError = nil
                 }
         }
     }
@@ -412,11 +456,13 @@ struct FeedView: View {
 
 private struct FeedRow: View {
     @Environment(FollowStore.self) private var follows
+    @Environment(PostActionStore.self) private var postActions
     @Environment(\.openURL) private var openURL
     let item: FeedItem
     @State private var showingProfile = false
     @State private var showingThread = false
     @State private var lightbox: LightboxItem?
+    @State private var confirmingBlock = false
 
     private var isFollowing: Bool { follows.isFollowing(item) }
     private var networkName: String { item.network == .bluesky ? "Bluesky" : "Mastodon" }
@@ -492,15 +538,47 @@ private struct FeedRow: View {
             }
         }
         .padding(.vertical, 4)
-        .contextMenu {
-            Button(followLabel, systemImage: isFollowing ? "person.badge.minus" : "person.badge.plus") {
-                Task { await follows.toggle(item) }
-            }
+        // Hittable-but-invisible backing so right-click works on the row's gaps too. Using a
+        // background (not .contentShape) keeps SwiftUI from owning the cursor, so the text
+        // view's pointing-hand hover over links still wins.
+        .background(Color.black.opacity(0.001))
+        .contextMenu { postMenu }
+        .confirmationDialog("Block @\(item.authorHandle)?", isPresented: $confirmingBlock, titleVisibility: .visible) {
+            Button("Block", role: .destructive) { Task { await postActions.block(item) } }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("You won't see posts from this account. You can undo this in the \(networkName) app.")
         }
         .sheet(item: $lightbox) { ImageLightbox(item: $0) }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilitySummary)
         .accessibilityAction(named: followLabel) { Task { await follows.toggle(item) } }
+    }
+
+    @ViewBuilder private var postMenu: some View {
+        Button(postActions.isReposted(item) ? "Reposted" : "Repost", systemImage: "arrow.2.squarepath") {
+            Task { await postActions.repost(item) }
+        }
+        .disabled(postActions.isReposted(item))
+        Button(postActions.isLiked(item) ? "Liked" : "Like",
+               systemImage: postActions.isLiked(item) ? "star.fill" : "star") {
+            Task { await postActions.like(item) }
+        }
+        .disabled(postActions.isLiked(item))
+        if let url = item.postURL {
+            Divider()
+            ShareLink(item: url) { Label("Share…", systemImage: "square.and.arrow.up") }
+            Button("Add to Reading List", systemImage: "eyeglasses") {
+                NSSharingService(named: .addToSafariReadingList)?.perform(withItems: [url])
+            }
+        }
+        Divider()
+        Button(followLabel, systemImage: isFollowing ? "person.badge.minus" : "person.badge.plus") {
+            Task { await follows.toggle(item) }
+        }
+        Button("Block @\(item.authorHandle)", systemImage: "hand.raised", role: .destructive) {
+            confirmingBlock = true
+        }
     }
 
 

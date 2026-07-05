@@ -91,6 +91,12 @@ final class LinkTextView: NSTextView {
     var onOpenLink: ((URL) -> Void)?
     private var cursorTracking: NSTrackingArea?
 
+    // Over a link, keep the native link menu (Open/Copy Link). Elsewhere return nil so the
+    // right-click falls through to the enclosing SwiftUI row's post menu.
+    override func menu(for event: NSEvent) -> NSMenu? {
+        link(at: convert(event.locationInWindow, from: nil)) != nil ? super.menu(for: event) : nil
+    }
+
     // Pointing-hand cursor over links, driven by the same link(at:) used for clicks so the
     // cursor and the clickable area can never disagree.
     override func updateTrackingAreas() {

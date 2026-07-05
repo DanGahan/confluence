@@ -118,11 +118,18 @@ extension BlueskyClient {
 
     private struct Post: Decodable {
         let uri: String
+        let cid: String?
         let author: Author
         let record: Record
         let embed: Embed?
         let indexedAt: String?
         let replyCount: Int?
+
+        /// `at://did/app.bsky.feed.post/{rkey}` → `https://bsky.app/profile/{handle}/post/{rkey}`.
+        var webURL: URL? {
+            guard let rkey = uri.split(separator: "/").last else { return nil }
+            return URL(string: "https://bsky.app/profile/\(author.handle)/post/\(rkey)")
+        }
 
         func makeFeedItem(orderDate: Date, repostedBy: String?) -> FeedItem {
             FeedItem(
@@ -142,7 +149,9 @@ extension BlueskyClient {
                 followURI: author.viewer?.following,
                 threadID: uri,
                 replyCount: replyCount ?? 0,
-                isReply: record.reply != nil
+                isReply: record.reply != nil,
+                cid: cid,
+                postURL: webURL
             )
         }
 

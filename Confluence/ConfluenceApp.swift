@@ -9,6 +9,7 @@ struct ConfluenceApp: App {
     @State private var notifications = NotificationStore()
     @State private var search = SearchStore()
     @State private var composer = ComposerStore()
+    @State private var postActions = PostActionStore()
 
     init() {
         // UI tests use in-memory storage: a clean logged-out state, and no Keychain access
@@ -29,6 +30,7 @@ struct ConfluenceApp: App {
                 .environment(notifications)
                 .environment(search)
                 .environment(composer)
+                .environment(postActions)
         }
         .windowResizability(.contentMinSize)
         .commands { AppCommands() }

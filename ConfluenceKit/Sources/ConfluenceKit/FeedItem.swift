@@ -44,6 +44,10 @@ public struct FeedItem: Identifiable, Sendable, Equatable {
     public let replyCount: Int
     /// Whether this post is itself a reply to another post.
     public let isReply: Bool
+    /// Bluesky post CID — the content hash needed alongside the URI to repost/like. nil for Mastodon.
+    public let cid: String?
+    /// Public web URL for the post (Share, Reading List). bsky.app / instance permalink.
+    public let postURL: URL?
 
     public var id: String { "\(network.rawValue):\(rawId)" }
     /// Identity key for the author across items (follow state is tracked per author).
@@ -55,7 +59,8 @@ public struct FeedItem: Identifiable, Sendable, Equatable {
                 avatarURL: URL?, createdAt: Date, text: String, attributedText: AttributedString? = nil,
                 imageURLs: [URL] = [], linkCard: LinkCard? = nil, repostedBy: String? = nil,
                 isFollowing: Bool = false, followURI: String? = nil,
-                threadID: String? = nil, replyCount: Int = 0, isReply: Bool = false) {
+                threadID: String? = nil, replyCount: Int = 0, isReply: Bool = false,
+                cid: String? = nil, postURL: URL? = nil) {
         self.network = network
         self.rawId = rawId
         self.authorID = authorID
@@ -73,6 +78,8 @@ public struct FeedItem: Identifiable, Sendable, Equatable {
         self.threadID = threadID ?? rawId
         self.replyCount = replyCount
         self.isReply = isReply
+        self.cid = cid
+        self.postURL = postURL
     }
 }
 
