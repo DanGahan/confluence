@@ -79,6 +79,7 @@ struct FeedView: View {
                 if feed.hasMore && !visibleItems.isEmpty {
                     ProgressView().controlSize(.small).frame(maxWidth: .infinity).padding()
                 }
+                Color.clear.frame(height: 72) // clearance for the floating compose button
             }
             .scrollTargetLayout()
             .frame(maxWidth: 600)          // cap reading width
@@ -141,6 +142,7 @@ struct FeedView: View {
         .focusedSceneValue(\.newPost) { showingComposer = true }
         .focusedSceneValue(\.openSearch) { showingSearch = true }
         .overlay(alignment: .bottom) { followToast }
+        .overlay(alignment: .bottomTrailing) { composeButton }
         .toolbar { feedToolbar }
         .sheet(isPresented: $showingBlueskyLogin) { BlueskyLoginView() }
         .sheet(isPresented: $showingMastodonLogin) { MastodonLoginView() }
@@ -153,11 +155,6 @@ struct FeedView: View {
     }
 
     @ToolbarContentBuilder private var feedToolbar: some ToolbarContent {
-        ToolbarItem {
-            Button { showingComposer = true } label: { Image(systemName: "square.and.pencil") }
-                .help("New Post")
-                .accessibilityLabel("New Post")
-        }
         ToolbarItem {
             Button { showingSearch = true } label: { Image(systemName: "magnifyingglass") }
                 .help("Search (⌘S)")
@@ -201,6 +198,21 @@ struct FeedView: View {
                 .help("Refresh")
                 .accessibilityLabel("Refresh")
         }
+    }
+
+    private var composeButton: some View {
+        Button { showingComposer = true } label: {
+            Image(systemName: "square.and.pencil")
+                .font(.system(size: 22, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 56, height: 56)
+                .background(.tint, in: Circle())
+                .shadow(radius: 4, y: 2)
+        }
+        .buttonStyle(.plain)
+        .padding(20)
+        .help("New Post (⌘N)")
+        .accessibilityLabel("New Post")
     }
 
     @ViewBuilder private var unreadBadge: some View {
