@@ -114,6 +114,7 @@ struct FeedView: View {
         .focusedSceneValue(\.refreshFeed, refreshAction)
         .focusedSceneValue(\.scrollFeedToTop, scrollToTop)
         .focusedSceneValue(\.newPost) { showingComposer = true }
+        .focusedSceneValue(\.openSearch) { showingSearch = true }
         .overlay(alignment: .bottom) { followToast }
         .toolbar { feedToolbar }
         .sheet(isPresented: $showingBlueskyLogin) { BlueskyLoginView() }
@@ -134,8 +135,7 @@ struct FeedView: View {
         }
         ToolbarItem {
             Button { showingSearch = true } label: { Image(systemName: "magnifyingglass") }
-                .keyboardShortcut("f")
-                .help("Search")
+                .help("Search (⌘S)")
                 .accessibilityLabel("Search")
         }
         ToolbarItem {
