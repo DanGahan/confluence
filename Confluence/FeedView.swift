@@ -433,6 +433,9 @@ private struct FeedRow: View {
                         }
                     }
                 }
+                if let card = item.linkCard {
+                    LinkCardView(card: card)
+                }
                 if item.hasThread {
                     Button { showingThread = true } label: {
                         Label(threadLabel, systemImage: "bubble.left.and.bubble.right")

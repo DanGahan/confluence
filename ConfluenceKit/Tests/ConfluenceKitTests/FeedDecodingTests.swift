@@ -40,6 +40,36 @@ struct FeedDecodingTests {
         #expect(item.followURI == "at://did:plc:me/app.bsky.graph.follow/xyz")
     }
 
+    @Test func decodesBlueskyExternalEmbedAsLinkCard() async throws {
+        // A link-only post: empty text, an external embed carries the content (bridged accounts).
+        let json = """
+        {
+          "feed": [{
+            "post": {
+              "uri": "at://did/app.bsky.feed.post/ext",
+              "author": {"did": "did:plc:x", "handle": "x.brid.gy"},
+              "record": {"text": "", "createdAt": "2026-07-01T10:00:00.000Z"},
+              "embed": {
+                "$type": "app.bsky.embed.external#view",
+                "external": {"uri": "https://example.com/story", "title": "Big Story",
+                             "description": "What happened", "thumb": "https://cdn/thumb.jpg"}
+              }
+            }
+          }]
+        }
+        """.data(using: .utf8)!
+        let client = BlueskyClient(session: MockURLProtocol.session { request in
+            (request.status(200), json)
+        })
+        let item = try #require(try await client.timeline(accessToken: "tok", cursor: nil).items.first)
+        let card = try #require(item.linkCard)
+        #expect(card.url.absoluteString == "https://example.com/story")
+        #expect(card.title == "Big Story")
+        #expect(card.description == "What happened")
+        #expect(card.thumbURL?.absoluteString == "https://cdn/thumb.jpg")
+        #expect(item.imageURLs.isEmpty)
+    }
+
     @Test func blueskyPassesCursorAsQuery() async throws {
         let client = BlueskyClient(session: MockURLProtocol.session { request in
             #expect(request.url?.query?.contains("cursor=abc") == true)

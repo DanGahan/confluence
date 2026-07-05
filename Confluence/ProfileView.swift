@@ -147,6 +147,9 @@ private struct ProfilePostRow: View {
                     }
                 }
             }
+            if let card = post.linkCard {
+                LinkCardView(card: card)
+            }
             if post.hasThread {
                 Button { showingThread = true } label: {
                     Label(threadLabel, systemImage: "bubble.left.and.bubble.right").font(.caption)

@@ -135,7 +135,8 @@ extension BlueskyClient {
                 createdAt: orderDate,
                 text: record.text,
                 attributedText: FeedEntry.attributed(from: record),
-                imageURLs: embed?.images?.compactMap { URL(string: $0.fullsize) } ?? [],
+                imageURLs: embed?.allImages?.compactMap { URL(string: $0.fullsize) } ?? [],
+                linkCard: (embed?.allImages?.isEmpty ?? true) ? embed?.anyExternal?.linkCard : nil,
                 repostedBy: repostedBy,
                 isFollowing: author.viewer?.following != nil,
                 followURI: author.viewer?.following,
@@ -197,9 +198,30 @@ extension BlueskyClient {
     }
     private struct Embed: Decodable {
         let images: [EmbedImage]?
+        let external: ExternalEmbed?
+        let media: EmbedMedia?  // recordWithMedia#view nests images/external under `media`
+
+        var allImages: [EmbedImage]? { images ?? media?.images }
+        var anyExternal: ExternalEmbed? { external ?? media?.external }
+    }
+    private struct EmbedMedia: Decodable {
+        let images: [EmbedImage]?
+        let external: ExternalEmbed?
     }
     private struct EmbedImage: Decodable {
         let fullsize: String
+    }
+    private struct ExternalEmbed: Decodable {
+        let uri: String
+        let title: String?
+        let description: String?
+        let thumb: String?
+
+        var linkCard: LinkCard? {
+            guard let url = URL(string: uri) else { return nil }
+            return LinkCard(url: url, title: title ?? uri, description: description ?? "",
+                            thumbURL: thumb.flatMap { URL(string: $0) })
+        }
     }
     private struct Reason: Decodable {
         let by: ReasonActor?
