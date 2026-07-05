@@ -17,6 +17,14 @@ struct RichTextTests {
         #expect(ProfileLink.parse(URL(string: "https://example.com")!) == nil)
     }
 
+    @Test func blueskyWebProfileHandleParsing() {
+        #expect(ProfileLink.blueskyWebProfileHandle(URL(string: "https://bsky.app/profile/alice.bsky.social")!) == "alice.bsky.social")
+        #expect(ProfileLink.blueskyWebProfileHandle(URL(string: "https://www.bsky.app/profile/bob.test")!) == "bob.test")
+        // Post / feed sub-paths and non-bsky hosts are not profile links.
+        #expect(ProfileLink.blueskyWebProfileHandle(URL(string: "https://bsky.app/profile/alice/post/abc")!) == nil)
+        #expect(ProfileLink.blueskyWebProfileHandle(URL(string: "https://example.com/profile/x")!) == nil)
+    }
+
     // MARK: Bluesky facets (UTF-8 byte ranges)
 
     @Test func blueskyLinkAndMentionFacets() {

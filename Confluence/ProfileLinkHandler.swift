@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import ConfluenceKit
 
 private struct ProfileTarget: Identifiable {
@@ -20,7 +21,15 @@ private struct ProfileLinkHandler: ViewModifier {
                     target = ProfileTarget(network: profile.network, accountID: profile.id, handle: profile.handle)
                     return .handled
                 }
-                return .systemAction // web links -> default browser
+                if let handle = ProfileLink.blueskyWebProfileHandle(url) {
+                    target = ProfileTarget(network: .bluesky, accountID: handle, handle: handle)
+                    return .handled
+                }
+                // Open web links ourselves: `.systemAction` returned from a programmatically
+                // invoked OpenURLAction (our NSTextView delegate calls this) doesn't reliably
+                // open, which left every post link dead.
+                NSWorkspace.shared.open(url)
+                return .handled
             })
             .sheet(item: $target) { t in
                 ProfileView(network: t.network, authorID: t.accountID, handle: t.handle)
