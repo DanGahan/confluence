@@ -35,10 +35,13 @@ public struct SearchResults: Sendable, Equatable {
     public var people: [SearchActor]
     public var posts: [FeedItem]
     public var failed: Bool
+    /// Opaque cursor for the next page of posts (Bluesky cursor / Mastodon offset); nil at end.
+    public var postsCursor: String?
 
-    public init(people: [SearchActor] = [], posts: [FeedItem] = [], failed: Bool = false) {
+    public init(people: [SearchActor] = [], posts: [FeedItem] = [], failed: Bool = false, postsCursor: String? = nil) {
         self.people = people
         self.posts = posts
         self.failed = failed
+        self.postsCursor = postsCursor
     }
 }

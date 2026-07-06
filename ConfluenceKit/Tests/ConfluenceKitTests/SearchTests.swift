@@ -11,7 +11,8 @@ struct SearchDecodingTests {
                 let json = #"{"actors":[{"did":"did:1","handle":"a.bsky.social","displayName":"Alice","viewer":{"following":"at://f"}}]}"#
                 return (request.status(200), json.data(using: .utf8)!)
             case "/xrpc/app.bsky.feed.searchPosts":
-                let json = #"{"posts":[{"uri":"at://p1","author":{"did":"did:2","handle":"b.bsky.social"},"record":{"text":"swift rocks","createdAt":"2026-07-01T10:00:00.000Z"}}]}"#
+                // Includes a link facet + an image embed — search must decode these like the feed.
+                let json = #"{"posts":[{"uri":"at://p1","cid":"cid1","author":{"did":"did:2","handle":"b.bsky.social"},"record":{"text":"see https://ex.com","createdAt":"2026-07-01T10:00:00.000Z","facets":[{"index":{"byteStart":4,"byteEnd":18},"features":[{"$type":"app.bsky.richtext.facet#link","uri":"https://ex.com"}]}]},"embed":{"images":[{"fullsize":"https://cdn/i.jpg"}]}}]}"#
                 return (request.status(200), json.data(using: .utf8)!)
             default:
                 return (request.status(404), Data())
@@ -21,7 +22,12 @@ struct SearchDecodingTests {
         #expect(results.failed == false)
         #expect(results.people.map(\.name) == ["Alice"])
         #expect(results.people[0].isFollowing == true)
-        #expect(results.posts.map(\.text) == ["swift rocks"])
+        // Rich decoding: the post carries a link run, images, and a cid (#78).
+        let post = results.posts[0]
+        #expect(post.text == "see https://ex.com")
+        #expect(post.attributedText.runs.contains { $0.link?.absoluteString == "https://ex.com" })
+        #expect(post.imageURLs.map(\.absoluteString) == ["https://cdn/i.jpg"])
+        #expect(post.cid == "cid1")
     }
 
     @Test func blueskySearchFailsOnlyWhenBothFail() async {
@@ -35,7 +41,7 @@ struct SearchDecodingTests {
             #expect(request.url?.path == "/api/v2/search")
             let json = """
             {"accounts":[{"id":"1","display_name":"Carol","acct":"carol","avatar":"https://c","note":"<p>hi bio</p>"}],
-             "statuses":[{"id":"9","created_at":"2026-07-01T09:00:00.000Z","content":"<p>hello</p>","account":{"id":"1","display_name":"Carol","acct":"carol","avatar":"https://c","note":""}}],
+             "statuses":[{"id":"9","created_at":"2026-07-01T09:00:00.000Z","content":"<p>hello <a href=\\"https://ex.com\\">link</a></p>","account":{"id":"1","display_name":"Carol","acct":"carol","avatar":"https://c","note":""},"media_attachments":[{"type":"image","url":"https://m/pic.jpg"}]}],
              "hashtags":[]}
             """
             return (request.status(200), json.data(using: .utf8)!)
@@ -44,7 +50,11 @@ struct SearchDecodingTests {
         #expect(results.people.map(\.name) == ["Carol"])
         #expect(results.people[0].bio == "hi bio")
         #expect(results.people[0].handle == "carol@mastodon.social")
-        #expect(results.posts.map(\.text) == ["hello"])
+        // Rich decoding: HTML link becomes a link run, media becomes imageURLs (#78).
+        let post = results.posts[0]
+        #expect(post.text == "hello link")
+        #expect(post.attributedText.runs.contains { $0.link?.absoluteString == "https://ex.com" })
+        #expect(post.imageURLs.map(\.absoluteString) == ["https://m/pic.jpg"])
     }
 
     @Test func mastodonSearchFailsOnError() async {
@@ -67,8 +77,8 @@ struct SearchStoreTests {
     @Test func mergesPeopleAndPostsFromBothNetworks() async {
         let store = SearchStore()
         store.setFetchers([
-            .bluesky: { _ in SearchResults(people: [self.actor(.bluesky, "b")], posts: [self.post(.bluesky, "bp", 10)]) },
-            .mastodon: { _ in SearchResults(people: [self.actor(.mastodon, "m")], posts: [self.post(.mastodon, "mp", 5)]) },
+            .bluesky: { _, _ in SearchResults(people: [self.actor(.bluesky, "b")], posts: [self.post(.bluesky, "bp", 10)]) },
+            .mastodon: { _, _ in SearchResults(people: [self.actor(.mastodon, "m")], posts: [self.post(.mastodon, "mp", 5)]) },
         ])
         await store.runSearch("q")
         #expect(Set(store.people.map(\.id)) == ["bluesky:b", "mastodon:m"])
@@ -79,8 +89,8 @@ struct SearchStoreTests {
     @Test func perNetworkFailureIsIsolated() async {
         let store = SearchStore()
         store.setFetchers([
-            .bluesky: { _ in SearchResults(people: [self.actor(.bluesky, "b")]) },
-            .mastodon: { _ in SearchResults(failed: true) },
+            .bluesky: { _, _ in SearchResults(people: [self.actor(.bluesky, "b")]) },
+            .mastodon: { _, _ in SearchResults(failed: true) },
         ])
         await store.runSearch("q")
         #expect(store.people.map(\.id) == ["bluesky:b"])
@@ -89,10 +99,49 @@ struct SearchStoreTests {
 
     @Test func emptyQueryClears() async {
         let store = SearchStore()
-        store.setFetchers([.bluesky: { _ in SearchResults(people: [self.actor(.bluesky, "b")]) }])
+        store.setFetchers([.bluesky: { _, _ in SearchResults(people: [self.actor(.bluesky, "b")]) }])
         await store.runSearch("q")
         #expect(!store.people.isEmpty)
         store.search("   ")
         #expect(store.people.isEmpty)
+    }
+
+    @Test func loadMoreAppendsNextPageUntilCursorEnds() async {
+        let store = SearchStore()
+        store.setFetchers([
+            .bluesky: { _, cursor in
+                switch cursor {
+                case nil: SearchResults(posts: [self.post(.bluesky, "b1", 10)], postsCursor: "c1")
+                case "c1": SearchResults(posts: [self.post(.bluesky, "b2", 20)], postsCursor: nil) // last page
+                default: SearchResults(failed: true)
+                }
+            },
+        ])
+        await store.runSearch("q")
+        #expect(store.posts.map(\.id) == ["bluesky:b1"])
+        #expect(store.hasMore == true)
+
+        await store.loadMore()
+        #expect(store.posts.map(\.id) == ["bluesky:b1", "bluesky:b2"]) // appended, newest-first order
+        #expect(store.hasMore == false)
+
+        await store.loadMore() // no-op at the end
+        #expect(store.posts.count == 2)
+    }
+
+    @Test func recentSearchesDedupeCapAndPersist() {
+        let defaults = UserDefaults(suiteName: "test.\(UUID().uuidString)")!
+        let store = SearchStore(defaults: defaults)
+        for q in ["swift", "cats", "swift", "  dogs ", "birds", "fish", "moss"] { store.recordSearch(q) }
+        // Most-recent first, de-duplicated (case/space-insensitive), capped at 5.
+        #expect(store.recentSearches == ["moss", "fish", "birds", "dogs", "swift"])
+        store.recordSearch("")
+        #expect(store.recentSearches.count == 5) // blank ignored
+
+        // Persists across instances.
+        let reopened = SearchStore(defaults: defaults)
+        #expect(reopened.recentSearches == ["moss", "fish", "birds", "dogs", "swift"])
+        reopened.clearRecents()
+        #expect(SearchStore(defaults: defaults).recentSearches.isEmpty)
     }
 }

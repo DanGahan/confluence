@@ -407,15 +407,15 @@ struct FeedView: View {
         if bluesky.isLoggedIn {
             let store = bluesky
             let client = BlueskyClient()
-            fetchers[.bluesky] = { query in
+            fetchers[.bluesky] = { query, cursor in
                 guard let token = await store.session?.accessJwt else { return SearchResults(failed: true) }
-                return await client.search(accessToken: token, query: query)
+                return await client.search(accessToken: token, query: query, cursor: cursor)
             }
         }
         if let session = mastodon.session {
             let client = MastodonClient()
-            fetchers[.mastodon] = { query in
-                await client.search(host: session.host, accessToken: session.accessToken, query: query)
+            fetchers[.mastodon] = { query, cursor in
+                await client.search(host: session.host, accessToken: session.accessToken, query: query, cursor: cursor)
             }
         }
         return fetchers
@@ -486,7 +486,9 @@ struct FeedView: View {
     }
 }
 
-private struct FeedRow: View {
+/// One post row — used by the feed and by search results so both behave identically
+/// (rich text + hover links, images/lightbox, link card, and the full right-click menu).
+struct FeedRow: View {
     @Environment(FollowStore.self) private var follows
     @Environment(PostActionStore.self) private var postActions
     @Environment(\.openURL) private var openURL

@@ -100,6 +100,15 @@ extension MastodonClient {
         let descendants: [Status]
     }
 
+    /// Decodes the `statuses` array of a `/api/v2/search` response into rich feed items
+    /// (links, images) using the same status decoding as the timeline. Internal so
+    /// MastodonSearch can reuse the private status model.
+    func searchStatusItems(from data: Data, host: String) -> [FeedItem] {
+        struct Response: Decodable { let statuses: [Status] }
+        guard let decoded = try? JSONDecoder().decode(Response.self, from: data) else { return [] }
+        return decoded.statuses.compactMap { $0.feedItem(host: host) }
+    }
+
     // MARK: - Wire format (only the fields we render)
 
     private struct Status: Decodable {
