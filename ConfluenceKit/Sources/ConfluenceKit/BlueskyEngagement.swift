@@ -28,6 +28,26 @@ extension BlueskyClient {
         ])
     }
 
+    /// `com.atproto.repo.deleteRecord` — deletes the signed-in user's own post by its AT URI.
+    public func deletePost(accessToken: String, uri: String) async throws {
+        let parts = uri.replacingOccurrences(of: "at://", with: "").split(separator: "/", maxSplits: 2).map(String.init)
+        guard parts.count == 3 else { throw BlueskyError.malformedResponse }
+        var request = URLRequest(url: pdsURL.appending(path: "xrpc/com.atproto.repo.deleteRecord"))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.httpBody = try JSONSerialization.data(withJSONObject: [
+            "repo": parts[0], "collection": parts[1], "rkey": parts[2],
+        ])
+        let response: URLResponse
+        do { (_, response) = try await session.data(for: request) }
+        catch { throw BlueskyError.network }
+        guard let http = response as? HTTPURLResponse else { throw BlueskyError.malformedResponse }
+        guard (200..<300).contains(http.statusCode) else {
+            throw http.statusCode == 401 ? BlueskyError.invalidCredentials : BlueskyError.server("Bluesky returned status \(http.statusCode).")
+        }
+    }
+
     // ponytail: one-way create; add deleteRecord-based undo (un-repost/un-like) if the UI needs it.
     private func createRecord(accessToken: String, repoDID: String, collection: String, record: [String: Any]) async throws -> String {
         var request = URLRequest(url: pdsURL.appending(path: "xrpc/com.atproto.repo.createRecord"))

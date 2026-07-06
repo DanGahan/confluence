@@ -16,14 +16,19 @@ extension MastodonClient {
         try await action(host: host, accessToken: accessToken, path: "/api/v1/accounts/\(accountID)/block")
     }
 
-    private func action(host: String, accessToken: String, path: String) async throws {
+    /// `DELETE /api/v1/statuses/:id` — deletes one of the signed-in user's own posts.
+    public func deletePost(host: String, accessToken: String, statusID: String) async throws {
+        try await action(host: host, accessToken: accessToken, path: "/api/v1/statuses/\(statusID)", method: "DELETE")
+    }
+
+    private func action(host: String, accessToken: String, path: String, method: String = "POST") async throws {
         var components = URLComponents()
         components.scheme = "https"
         components.host = host
         components.path = path // ids come from the API; URLComponents percent-encodes the path
         guard let url = components.url else { throw MastodonError.malformedResponse }
         var request = URLRequest(url: url)
-        request.httpMethod = "POST"
+        request.httpMethod = method
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
 
         let response: URLResponse

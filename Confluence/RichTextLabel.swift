@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import ConfluenceKit
 
 /// Read-only, selectable post body backed by NSTextView.
 ///
@@ -59,6 +60,7 @@ struct RichTextLabel: NSViewRepresentable {
             NSAttributedString.Key.cursor: NSCursor.pointingHand,
         ]
         tv.textStorage?.setAttributedString(Self.nsAttributed(attributed, font: PostAppearance.nsFont(name: fontName, size: fontSize)))
+        tv.window?.invalidateCursorRects(for: tv) // rebuild link cursor rects for the new layout
     }
 
     func sizeThatFits(_ proposal: ProposedViewSize, nsView tv: LinkTextView, context: Context) -> CGSize? {
@@ -96,7 +98,6 @@ struct RichTextLabel: NSViewRepresentable {
 /// NSTextView that can resolve which link (if any) sits at a point, and open it.
 final class LinkTextView: NSTextView {
     var onOpenLink: ((URL) -> Void)?
-    private var cursorTracking: NSTrackingArea?
 
     // Over a link, keep the native link menu (Open/Copy Link). Elsewhere return nil so the
     // right-click falls through to the enclosing SwiftUI row's post menu.
@@ -104,41 +105,29 @@ final class LinkTextView: NSTextView {
         link(at: convert(event.locationInWindow, from: nil)) != nil ? super.menu(for: event) : nil
     }
 
-    // Pointing-hand cursor over links, driven by the same link(at:) used for clicks so the
-    // cursor and the clickable area can never disagree.
-    override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        if let cursorTracking { removeTrackingArea(cursorTracking) }
-        let area = NSTrackingArea(rect: .zero,
-                                  options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect],
-                                  owner: self, userInfo: nil)
-        addTrackingArea(area)
-        cursorTracking = area
+    // Rebuild cursor rects after every layout pass, so the pointing-hand rects use settled
+    // geometry (computing them before layout gave empty/wrong rects — the recurring bug).
+    override func layout() {
+        super.layout()
+        window?.invalidateCursorRects(for: self)
     }
 
-    override func mouseMoved(with event: NSEvent) {
-        let p = convert(event.locationInWindow, from: nil)
-        (link(at: p) != nil ? NSCursor.pointingHand : NSCursor.iBeam).set()
+    // Pointing-hand cursor over links via cursor rects (AppKit-managed; reliable). Geometry
+    // comes from the unit-tested LinkGeometry so this can't silently regress.
+    override func resetCursorRects() {
+        super.resetCursorRects()
+        guard let lm = layoutManager, let tc = textContainer, let ts = textStorage else { return }
+        let inset = CGSize(width: textContainerInset.width, height: textContainerInset.height)
+        for rect in LinkGeometry.linkRects(layoutManager: lm, textContainer: tc, textStorage: ts) {
+            addCursorRect(rect.offsetBy(dx: inset.width, dy: inset.height), cursor: .pointingHand)
+        }
     }
 
-    override func mouseExited(with event: NSEvent) {
-        NSCursor.arrow.set()
-        super.mouseExited(with: event)
-    }
-
-    /// The link at `point` (view coordinates), or nil. Checks the glyph's actual bounding
-    /// rect so clicks past a line's trailing edge don't match (characterIndex clamps).
+    /// The link at `point` (view coordinates), or nil. Delegates to the tested geometry.
     func link(at point: NSPoint) -> URL? {
-        guard let lm = layoutManager, let tc = textContainer,
-              let ts = textStorage, ts.length > 0 else { return nil }
+        guard let lm = layoutManager, let tc = textContainer, let ts = textStorage else { return nil }
         let p = CGPoint(x: point.x - textContainerInset.width, y: point.y - textContainerInset.height)
-        var fraction: CGFloat = 0
-        let idx = lm.characterIndex(for: p, in: tc, fractionOfDistanceBetweenInsertionPoints: &fraction)
-        guard idx < ts.length else { return nil }
-        let glyphs = lm.glyphRange(forCharacterRange: NSRange(location: idx, length: 1), actualCharacterRange: nil)
-        guard lm.boundingRect(forGlyphRange: glyphs, in: tc).insetBy(dx: -2, dy: -2).contains(p) else { return nil }
-        let link = ts.attribute(.link, at: idx, effectiveRange: nil)
-        return (link as? URL) ?? (link as? String).flatMap(URL.init(string:))
+        return LinkGeometry.linkURL(at: p, layoutManager: lm, textContainer: tc, textStorage: ts)
     }
 }
 

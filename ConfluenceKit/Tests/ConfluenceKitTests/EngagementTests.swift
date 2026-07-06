@@ -42,6 +42,27 @@ struct EngagementTests {
         _ = try await client.block(accessToken: "t", repoDID: "did", subjectDID: "did:plc:target")
     }
 
+    @Test func blueskyDeletePostSendsDeleteRecord() async throws {
+        let client = BlueskyClient(session: MockURLProtocol.session { request in
+            #expect(request.url?.path == "/xrpc/com.atproto.repo.deleteRecord")
+            let body = try JSONSerialization.jsonObject(with: MockURLProtocol.body(of: request)) as! [String: Any]
+            #expect(body["repo"] as? String == "did:me")
+            #expect(body["collection"] as? String == "app.bsky.feed.post")
+            #expect(body["rkey"] as? String == "abc")
+            return (request.status(200), Data())
+        })
+        try await client.deletePost(accessToken: "t", uri: "at://did:me/app.bsky.feed.post/abc")
+    }
+
+    @Test func mastodonDeletePostSendsDELETE() async throws {
+        let client = MastodonClient(session: MockURLProtocol.session { request in
+            #expect(request.httpMethod == "DELETE")
+            #expect(request.url?.path == "/api/v1/statuses/55")
+            return (request.status(200), #"{"id":"55"}"#.data(using: .utf8)!)
+        })
+        try await client.deletePost(host: "m.social", accessToken: "t", statusID: "55")
+    }
+
     @Test func blueskyEngagement401MapsToInvalidCredentials() async {
         let client = BlueskyClient(session: MockURLProtocol.session { ($0.status(401), Data()) })
         await #expect(throws: BlueskyError.invalidCredentials) {
