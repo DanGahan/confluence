@@ -125,10 +125,14 @@ struct FeedView: View {
             postActions.setActions(makePostActions())
             notifications.setFetchers(makeNotificationFetchers())
             search.setFetchers(makeSearchFetchers())
-            await configureComposer()
+            // Configure the composer concurrently — it awaits the Mastodon character-limit
+            // network call (slow instances stall it for seconds). Awaiting it before the feed
+            // refresh left the feed empty on open until a manual refresh (#76).
+            async let composerReady: Void = configureComposer()
             await feed.refresh()
             await seedMastodonFollowState()
             await restoreScrollPosition()
+            await composerReady
             await notifications.refresh()
             // Poll while this window is frontmost (task is cancelled when accounts change).
             while !Task.isCancelled {
