@@ -35,11 +35,12 @@ struct FeedView: View {
     /// Feed items after applying the network filter (client-side over the merged list).
     /// Filtering only applies when both networks are connected; otherwise there's one network.
     private var visibleItems: [FeedItem] {
-        guard bothConnected else { return feed.items }
+        let live = feed.items.filter { !postActions.isDeleted($0) }
+        guard bothConnected else { return live }
         switch networkFilter {
-        case .both: return feed.items
-        case .bluesky: return feed.items.filter { $0.network == .bluesky }
-        case .mastodon: return feed.items.filter { $0.network == .mastodon }
+        case .both: return live
+        case .bluesky: return live.filter { $0.network == .bluesky }
+        case .mastodon: return live.filter { $0.network == .mastodon }
         }
     }
 
@@ -128,6 +129,7 @@ struct FeedView: View {
             await configureComposer()
             await feed.refresh()
             await seedMastodonFollowState()
+            await seedOwnership()
             await restoreScrollPosition()
             await notifications.refresh()
             // Poll while this window is frontmost (task is cancelled when accounts change).
@@ -342,6 +344,9 @@ struct FeedView: View {
                 },
                 block: { item in
                     _ = try await withSession { try await client.block(accessToken: $0.accessJwt, repoDID: $0.did, subjectDID: item.authorID) }
+                },
+                delete: { item in
+                    try await withSession { try await client.deletePost(accessToken: $0.accessJwt, uri: item.rawId) }
                 }
             )
         }
@@ -350,10 +355,22 @@ struct FeedView: View {
             actions[.mastodon] = PostActions(
                 repost: { item in try await client.reblog(host: session.host, accessToken: session.accessToken, statusID: item.threadID) },
                 like: { item in try await client.favourite(host: session.host, accessToken: session.accessToken, statusID: item.threadID) },
-                block: { item in try await client.block(host: session.host, accessToken: session.accessToken, accountID: item.authorID) }
+                block: { item in try await client.block(host: session.host, accessToken: session.accessToken, accountID: item.authorID) },
+                delete: { item in try await client.deletePost(host: session.host, accessToken: session.accessToken, statusID: item.threadID) }
             )
         }
         return actions
+    }
+
+    /// Identify the signed-in user per network so own-post actions (Delete) can appear.
+    private func seedOwnership() async {
+        var keys: Set<String> = []
+        if let did = bluesky.session?.did { keys.insert("\(Network.bluesky.rawValue):\(did)") }
+        if let session = mastodon.session,
+           let me = try? await MastodonClient().currentAccount(host: session.host, accessToken: session.accessToken) {
+            keys.insert("\(Network.mastodon.rawValue):\(me.authorID)")
+        }
+        postActions.setOwnAuthorKeys(keys)
     }
 
     private func makeNotificationFetchers() -> [Network: NotificationFetcher] {
@@ -466,6 +483,7 @@ private struct FeedRow: View {
     @State private var showingThread = false
     @State private var lightbox: LightboxItem?
     @State private var confirmingBlock = false
+    @State private var confirmingDelete = false
 
     private var isFollowing: Bool { follows.isFollowing(item) }
     private var networkName: String { item.network == .bluesky ? "Bluesky" : "Mastodon" }
@@ -552,6 +570,12 @@ private struct FeedRow: View {
         } message: {
             Text("You won't see posts from this account. You can undo this in the \(networkName) app.")
         }
+        .confirmationDialog("Delete this post?", isPresented: $confirmingDelete, titleVisibility: .visible) {
+            Button("Delete", role: .destructive) { Task { await postActions.delete(item) } }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This permanently deletes the post on \(networkName).")
+        }
         .sheet(item: $lightbox) { ImageLightbox(item: $0) }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilitySummary)
@@ -576,11 +600,15 @@ private struct FeedRow: View {
             }
         }
         Divider()
-        Button(followLabel, systemImage: isFollowing ? "person.badge.minus" : "person.badge.plus") {
-            Task { await follows.toggle(item) }
-        }
-        Button("Block @\(item.authorHandle)", systemImage: "hand.raised", role: .destructive) {
-            confirmingBlock = true
+        if postActions.isOwn(item) {
+            Button("Delete Post", systemImage: "trash", role: .destructive) { confirmingDelete = true }
+        } else {
+            Button(followLabel, systemImage: isFollowing ? "person.badge.minus" : "person.badge.plus") {
+                Task { await follows.toggle(item) }
+            }
+            Button("Block @\(item.authorHandle)", systemImage: "hand.raised", role: .destructive) {
+                confirmingBlock = true
+            }
         }
     }
 

@@ -59,6 +59,7 @@ struct RichTextLabel: NSViewRepresentable {
             NSAttributedString.Key.cursor: NSCursor.pointingHand,
         ]
         tv.textStorage?.setAttributedString(Self.nsAttributed(attributed, font: PostAppearance.nsFont(name: fontName, size: fontSize)))
+        tv.window?.invalidateCursorRects(for: tv) // rebuild link cursor rects for the new layout
     }
 
     func sizeThatFits(_ proposal: ProposedViewSize, nsView tv: LinkTextView, context: Context) -> CGSize? {
@@ -96,7 +97,6 @@ struct RichTextLabel: NSViewRepresentable {
 /// NSTextView that can resolve which link (if any) sits at a point, and open it.
 final class LinkTextView: NSTextView {
     var onOpenLink: ((URL) -> Void)?
-    private var cursorTracking: NSTrackingArea?
 
     // Over a link, keep the native link menu (Open/Copy Link). Elsewhere return nil so the
     // right-click falls through to the enclosing SwiftUI row's post menu.
@@ -104,26 +104,19 @@ final class LinkTextView: NSTextView {
         link(at: convert(event.locationInWindow, from: nil)) != nil ? super.menu(for: event) : nil
     }
 
-    // Pointing-hand cursor over links, driven by the same link(at:) used for clicks so the
-    // cursor and the clickable area can never disagree.
-    override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        if let cursorTracking { removeTrackingArea(cursorTracking) }
-        let area = NSTrackingArea(rect: .zero,
-                                  options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect],
-                                  owner: self, userInfo: nil)
-        addTrackingArea(area)
-        cursorTracking = area
-    }
-
-    override func mouseMoved(with event: NSEvent) {
-        let p = convert(event.locationInWindow, from: nil)
-        (link(at: p) != nil ? NSCursor.pointingHand : NSCursor.iBeam).set()
-    }
-
-    override func mouseExited(with event: NSEvent) {
-        NSCursor.arrow.set()
-        super.mouseExited(with: event)
+    // Pointing-hand cursor over links via cursor rects — AppKit manages these reliably, unlike
+    // setting NSCursor in mouseMoved (which the system resets out from under you).
+    override func resetCursorRects() {
+        super.resetCursorRects()
+        guard let lm = layoutManager, let tc = textContainer, let ts = textStorage, ts.length > 0 else { return }
+        let inset = CGSize(width: textContainerInset.width, height: textContainerInset.height)
+        ts.enumerateAttribute(.link, in: NSRange(location: 0, length: ts.length)) { value, range, _ in
+            guard value != nil else { return }
+            let glyphs = lm.glyphRange(forCharacterRange: range, actualCharacterRange: nil)
+            lm.enumerateEnclosingRects(forGlyphRange: glyphs, withinSelectedGlyphRange: NSRange(location: NSNotFound, length: 0), in: tc) { [self] rect, _ in
+                addCursorRect(rect.offsetBy(dx: inset.width, dy: inset.height), cursor: .pointingHand)
+            }
+        }
     }
 
     /// The link at `point` (view coordinates), or nil. Checks the glyph's actual bounding

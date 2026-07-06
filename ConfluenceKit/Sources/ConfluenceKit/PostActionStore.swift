@@ -7,13 +7,16 @@ public struct PostActions: Sendable {
     public let repost: @Sendable (FeedItem) async throws -> Void
     public let like: @Sendable (FeedItem) async throws -> Void
     public let block: @Sendable (FeedItem) async throws -> Void
+    public let delete: @Sendable (FeedItem) async throws -> Void
 
     public init(repost: @escaping @Sendable (FeedItem) async throws -> Void,
                 like: @escaping @Sendable (FeedItem) async throws -> Void,
-                block: @escaping @Sendable (FeedItem) async throws -> Void) {
+                block: @escaping @Sendable (FeedItem) async throws -> Void,
+                delete: @escaping @Sendable (FeedItem) async throws -> Void) {
         self.repost = repost
         self.like = like
         self.block = block
+        self.delete = delete
     }
 }
 
@@ -25,6 +28,8 @@ public final class PostActionStore {
     private var reposted: Set<String> = []
     private var liked: Set<String> = []
     private var blockedAuthors: Set<String> = []
+    private var deletedPosts: Set<String> = []
+    private var ownAuthorKeys: Set<String> = []
     private var actions: [Network: PostActions] = [:]
 
     /// Human-readable message for a transient failure toast; cleared by the UI.
@@ -34,9 +39,14 @@ public final class PostActionStore {
 
     public func setActions(_ actions: [Network: PostActions]) { self.actions = actions }
 
+    /// Identify the signed-in user per network (authorKey form) so own-post actions can show.
+    public func setOwnAuthorKeys(_ keys: Set<String>) { ownAuthorKeys = keys }
+
     public func isReposted(_ item: FeedItem) -> Bool { reposted.contains(item.id) }
     public func isLiked(_ item: FeedItem) -> Bool { liked.contains(item.id) }
     public func isBlocked(_ item: FeedItem) -> Bool { blockedAuthors.contains(item.authorKey) }
+    public func isOwn(_ item: FeedItem) -> Bool { ownAuthorKeys.contains(item.authorKey) }
+    public func isDeleted(_ item: FeedItem) -> Bool { deletedPosts.contains(item.id) }
 
     public func repost(_ item: FeedItem) async {
         await run(item, add: item.id, to: \.reposted, failure: "Couldn't repost. Please try again.") {
@@ -53,6 +63,17 @@ public final class PostActionStore {
     public func block(_ item: FeedItem) async {
         await run(item, add: item.authorKey, to: \.blockedAuthors, failure: "Couldn't block. Please try again.") {
             try await $0.block(item)
+        }
+    }
+
+    /// Deletes the user's own post; on success it's hidden from the feed (via `isDeleted`).
+    public func delete(_ item: FeedItem) async {
+        guard let action = actions[item.network] else { return }
+        do {
+            try await action.delete(item)
+            deletedPosts.insert(item.id)
+        } catch {
+            lastError = (error as? LocalizedError)?.errorDescription ?? "Couldn't delete. Please try again."
         }
     }
 
