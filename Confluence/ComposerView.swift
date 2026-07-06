@@ -7,6 +7,7 @@ struct ComposerView: View {
     @Environment(ComposerStore.self) private var composerStore
     @Environment(BlueskyAccountStore.self) private var bluesky
     @Environment(MastodonAccountStore.self) private var mastodon
+    @Environment(DraftStore.self) private var draftStore
     @Environment(\.dismiss) private var dismiss
     @FocusState private var editorFocused: Bool
     @State private var accounts: [Network: Profile] = [:]
@@ -15,14 +16,25 @@ struct ComposerView: View {
     @State private var linkText = ""
     @State private var showingLibrary = false
     @State private var pickerItems: [PhotosPickerItem] = []
+    @State private var editingDraftID: UUID?
+    @State private var showingDrafts = false
+
+    private var hasContent: Bool {
+        !composerStore.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !composerStore.attachments.isEmpty
+    }
 
     var body: some View {
         @Bindable var composer = composerStore
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 10) {
                 SheetCloseButton { dismiss() }
-                Text("New Post").font(.headline)
+                Text(editingDraftID == nil ? "New Post" : "Draft").font(.headline)
                 Spacer()
+                Button { showingDrafts = true } label: {
+                    Label("Drafts", systemImage: "tray.full")
+                }
+                .disabled(draftStore.drafts.isEmpty)
+                .popover(isPresented: $showingDrafts, arrowEdge: .top) { draftsPopover }
             }
 
             TextEditor(text: $composer.text)
@@ -66,11 +78,16 @@ struct ComposerView: View {
 
             HStack {
                 if composer.isPosting { ProgressView().controlSize(.small) }
+                Button("Save Draft") { saveDraft() }
+                    .disabled(!hasContent || composer.isPosting)
                 Spacer()
                 Button(composer.failed.isEmpty ? "Post" : "Retry") {
                     Task {
                         await composerStore.post()
-                        if composerStore.didPostAll { dismiss() }
+                        if composerStore.didPostAll {
+                            if let id = editingDraftID { draftStore.delete(id) } // posted → drop the draft
+                            dismiss()
+                        }
                     }
                 }
                 .keyboardShortcut(.defaultAction)
@@ -82,6 +99,61 @@ struct ComposerView: View {
         .frame(width: 460)
         .onAppear { editorFocused = true }
         .task { await load() }
+    }
+
+    // MARK: Drafts
+
+    private func saveDraft() {
+        let draft = Draft(id: editingDraftID ?? UUID(), text: composerStore.text,
+                          attachments: composerStore.attachments,
+                          postToBluesky: composerStore.postToBluesky, postToMastodon: composerStore.postToMastodon)
+        draftStore.save(draft)
+        composerStore.reset()
+        editingDraftID = nil
+        dismiss()
+    }
+
+    private func loadDraft(_ draft: Draft) {
+        composerStore.text = draft.text
+        composerStore.attachments = draft.attachments
+        composerStore.postToBluesky = draft.postToBluesky
+        composerStore.postToMastodon = draft.postToMastodon
+        editingDraftID = draft.id
+        showingDrafts = false
+    }
+
+    private var draftsPopover: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Drafts").font(.headline)
+            if draftStore.drafts.isEmpty {
+                Text("No saved drafts.").foregroundStyle(.secondary)
+            } else {
+                List {
+                    ForEach(draftStore.drafts) { draft in
+                        HStack {
+                            Button { loadDraft(draft) } label: {
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(draft.preview).lineLimit(1)
+                                    Text(draft.savedAt, format: .relative(presentation: .named))
+                                        .font(.caption).foregroundStyle(.secondary)
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            Button(role: .destructive) { draftStore.delete(draft.id) } label: {
+                                Image(systemName: "trash")
+                            }
+                            .buttonStyle(.plain).foregroundStyle(.secondary)
+                            .accessibilityLabel("Delete draft")
+                        }
+                    }
+                }
+                .listStyle(.inset)
+                .frame(width: 300, height: 220)
+            }
+        }
+        .padding(12)
     }
 
     // MARK: Attachments

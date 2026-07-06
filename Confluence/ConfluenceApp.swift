@@ -10,6 +10,7 @@ struct ConfluenceApp: App {
     @State private var search = SearchStore()
     @State private var composer = ComposerStore()
     @State private var postActions = PostActionStore()
+    @State private var drafts = DraftStore()
 
     init() {
         // UI tests use in-memory storage: a clean logged-out state, and no Keychain access
@@ -31,6 +32,7 @@ struct ConfluenceApp: App {
                 .environment(search)
                 .environment(composer)
                 .environment(postActions)
+                .environment(drafts)
                 .background(FeedWindowConfigurator()) // prefer tabs so ⌘T adds a tab, not a window
         }
         .windowResizability(.contentMinSize)
