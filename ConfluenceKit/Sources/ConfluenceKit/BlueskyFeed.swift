@@ -48,6 +48,15 @@ extension BlueskyClient {
         return PostThread(items: chronological(items), focusID: focusID)
     }
 
+    /// Decodes an `app.bsky.feed.searchPosts` response into rich feed items (facets/links,
+    /// images, link cards) using the same post decoding as the timeline, so search matches the
+    /// feed. Internal so BlueskySearch can reuse the private post model.
+    func searchPostItems(from data: Data) -> (items: [FeedItem], cursor: String?) {
+        struct Response: Decodable { let cursor: String?; let posts: [Post] }
+        guard let decoded = try? JSONDecoder().decode(Response.self, from: data) else { return ([], nil) }
+        return (decoded.posts.compactMap { $0.threadFeedItem() }, decoded.cursor)
+    }
+
     /// `app.bsky.feed.getAuthorFeed` — a single user's posts. Same wire shape as the timeline.
     public func authorFeed(accessToken: String, actor: String, cursor: String?, limit: Int = 40) async throws -> FeedPage {
         var components = URLComponents(url: pdsURL.appending(path: "xrpc/app.bsky.feed.getAuthorFeed"), resolvingAgainstBaseURL: false)!

@@ -10,23 +10,29 @@ struct SearchView: View {
     @State private var showPosts = true
     @FocusState private var fieldFocused: Bool
 
+    private var trimmedQuery: String { query.trimmingCharacters(in: .whitespaces) }
+
     var body: some View {
         VStack(spacing: 0) {
             HStack {
+                SheetCloseButton { dismiss() }
+                Spacer()
+            }
+            .padding([.horizontal, .top])
+            HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
                 TextField("Search Bluesky and Mastodon", text: $query)
                     .textFieldStyle(.plain)
                     .focused($fieldFocused)
                     .onChange(of: query) { _, new in search.search(new) }
-                    .onSubmit { search.search(query) }
+                    .onSubmit { search.recordSearch(query); search.search(query) }
                 if !query.isEmpty {
                     Button { query = ""; search.clear() } label: { Image(systemName: "xmark.circle.fill") }
                         .buttonStyle(.plain).foregroundStyle(.secondary)
                         .accessibilityLabel("Clear search")
                 }
-                Button("Done") { dismiss() }.keyboardShortcut(.cancelAction)
             }
-            .padding([.horizontal, .top])
+            .padding(.horizontal).padding(.top, 10)
             HStack(spacing: 8) {
                 Toggle("People", isOn: $showPeople).toggleStyle(.button)
                 Toggle("Posts", isOn: $showPosts).toggleStyle(.button)
@@ -41,39 +47,78 @@ struct SearchView: View {
         .frame(minWidth: 420, minHeight: 520)
         .handleProfileLinks()
         .onAppear { fieldFocused = true }
-        .onDisappear { search.clear() } // no search history stored
+        .onDisappear { search.clear() } // results aren't kept; recents are (persisted separately)
     }
 
     @ViewBuilder private var content: some View {
-        if query.trimmingCharacters(in: .whitespaces).isEmpty {
-            ContentUnavailableView("Search", systemImage: "magnifyingglass",
-                                   description: Text("Find people and posts across both networks."))
-                .frame(maxHeight: .infinity)
+        if trimmedQuery.isEmpty {
+            if search.recentSearches.isEmpty {
+                ContentUnavailableView("Search", systemImage: "magnifyingglass",
+                                       description: Text("Find people and posts across both networks."))
+                    .frame(maxHeight: .infinity)
+            } else {
+                recentSearches
+            }
         } else if search.people.isEmpty && search.posts.isEmpty && !search.isSearching {
             ContentUnavailableView.search(text: query).frame(maxHeight: .infinity)
         } else {
-            List {
-                if !search.failedNetworks.isEmpty {
-                    let names = search.failedNetworks.map { $0 == .bluesky ? "Bluesky" : "Mastodon" }.sorted().joined(separator: " and ")
-                    Label("\(names) search failed.", systemImage: "exclamationmark.triangle.fill")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-                if showPeople && !search.people.isEmpty {
-                    Section("People") {
-                        // Cap people only when posts are also shown, so posts stay reachable.
-                        ForEach(showPosts ? Array(search.people.prefix(8)) : search.people) { person in
-                            PersonRow(person: person)
-                        }
+            results
+        }
+    }
+
+    private var recentSearches: some View {
+        List {
+            Section {
+                ForEach(search.recentSearches, id: \.self) { q in
+                    Button {
+                        query = q                 // onChange runs the search
+                        search.recordSearch(q)    // bump it to the top
+                    } label: {
+                        Label(q, systemImage: "clock.arrow.circlepath")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
                     }
+                    .buttonStyle(.plain)
                 }
-                if showPosts && !search.posts.isEmpty {
-                    Section("Posts") {
-                        ForEach(search.posts) { post in SearchPostRow(post: post) }
+            } header: {
+                HStack {
+                    Text("Recent Searches")
+                    Spacer()
+                    Button("Clear") { search.clearRecents() }.font(.caption)
+                }
+            }
+        }
+        .listStyle(.inset)
+    }
+
+    private var results: some View {
+        List {
+            if !search.failedNetworks.isEmpty {
+                let names = search.failedNetworks.map { $0 == .bluesky ? "Bluesky" : "Mastodon" }.sorted().joined(separator: " and ")
+                Label("\(names) search failed.", systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            if showPeople && !search.people.isEmpty {
+                Section("People") {
+                    // Cap people only when posts are also shown, so posts stay reachable.
+                    ForEach(showPosts ? Array(search.people.prefix(8)) : search.people) { person in
+                        PersonRow(person: person)
                     }
                 }
             }
-            .listStyle(.inset)
+            if showPosts && !search.posts.isEmpty {
+                Section("Posts") {
+                    // Reuse the feed row so search behaves exactly like the feed (right-click
+                    // actions, hover links, images/lightbox, cards).
+                    ForEach(search.posts) { post in FeedRow(item: post) }
+                    if search.hasMore {
+                        ProgressView().controlSize(.small).frame(maxWidth: .infinity)
+                            .onAppear { Task { await search.loadMore() } }
+                    }
+                }
+            }
         }
+        .listStyle(.inset)
     }
 }
 
@@ -100,25 +145,6 @@ private struct PersonRow: View {
             }
             .buttonStyle(.bordered)
             .accessibilityLabel("\(follows.isFollowing(person) ? "Unfollow" : "Follow") \(person.handle)")
-        }
-        .padding(.vertical, 4)
-    }
-}
-
-private struct SearchPostRow: View {
-    let post: FeedItem
-    var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            Avatar(url: post.avatarURL, size: 32)
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
-                    Text(post.authorName).fontWeight(.semibold).lineLimit(1)
-                    Text("@\(post.authorHandle)").font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                    Spacer(minLength: 4)
-                    networkBadge(post.network)
-                }
-                if !post.text.isEmpty { Text(post.attributedText).font(.callout).lineLimit(4) }
-            }
         }
         .padding(.vertical, 4)
     }
