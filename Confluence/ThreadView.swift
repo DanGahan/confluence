@@ -27,9 +27,9 @@ struct ThreadView: View {
                 }
             }
             .navigationTitle("Thread")
-            .toolbar { Button("Done") { dismiss() }.keyboardShortcut(.cancelAction) }
         }
         .frame(width: contentWidth + 32, height: 620)
+        .overlay(alignment: .topLeading) { SheetCloseButton { dismiss() }.padding(12) }
         .handleProfileLinks()
         .task { await load() }
     }

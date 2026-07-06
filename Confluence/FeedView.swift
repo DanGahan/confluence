@@ -601,6 +601,9 @@ struct FeedRow: View {
         // background (not .contentShape) keeps SwiftUI from owning the cursor, so the text
         // view's pointing-hand hover over links still wins.
         .background(Color.black.opacity(0.001))
+        // Click the post (chrome/text — links, avatar, images consume their own clicks) to open
+        // its thread, same as the "Show thread" affordance.
+        .onTapGesture { if item.hasThread { showingThread = true } }
         .contextMenu { postMenu }
         .confirmationDialog("Block @\(item.authorHandle)?", isPresented: $confirmingBlock, titleVisibility: .visible) {
             Button("Block", role: .destructive) { Task { await postActions.block(item) } }
