@@ -415,22 +415,33 @@ struct FeedView: View {
         if bluesky.isLoggedIn {
             let store = bluesky
             let client = BlueskyClient()
-            posters[.bluesky] = { text in
+            posters[.bluesky] = { text, images in
                 guard let session = await store.session else { throw BlueskyError.invalidCredentials }
-                do {
-                    _ = try await client.post(accessToken: session.accessJwt, repoDID: session.did, text: text)
-                } catch BlueskyError.invalidCredentials {
+                func attempt(_ s: BlueskySession) async throws {
+                    var blobs: [Data] = []
+                    for data in images {
+                        blobs.append(try await client.uploadImage(accessToken: s.accessJwt, data: data, mimeType: "image/jpeg"))
+                    }
+                    _ = try await client.post(accessToken: s.accessJwt, repoDID: s.did, text: text, imageBlobs: blobs)
+                }
+                do { try await attempt(session) }
+                catch BlueskyError.invalidCredentials {
                     try await store.refresh()
                     guard let fresh = await store.session else { throw BlueskyError.invalidCredentials }
-                    _ = try await client.post(accessToken: fresh.accessJwt, repoDID: fresh.did, text: text)
+                    try await attempt(fresh)
                 }
             }
             limits[.bluesky] = 300
         }
         if let session = mastodon.session {
             let client = MastodonClient()
-            posters[.mastodon] = { text in
-                try await client.post(host: session.host, accessToken: session.accessToken, text: text)
+            posters[.mastodon] = { text, images in
+                var mediaIDs: [String] = []
+                for (i, data) in images.enumerated() {
+                    mediaIDs.append(try await client.uploadImage(host: session.host, accessToken: session.accessToken,
+                                                                 data: data, filename: "image\(i).jpg", mimeType: "image/jpeg"))
+                }
+                try await client.post(host: session.host, accessToken: session.accessToken, text: text, mediaIDs: mediaIDs)
             }
             limits[.mastodon] = await client.characterLimit(host: session.host)
         }
