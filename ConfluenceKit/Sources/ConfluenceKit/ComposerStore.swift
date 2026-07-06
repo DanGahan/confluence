@@ -1,8 +1,8 @@
 import Foundation
 import Observation
 
-/// Publishes text to one network. Throws on failure.
-public typealias Poster = @Sendable (_ text: String) async throws -> Void
+/// Publishes text (and any attached image data) to one network. Throws on failure.
+public typealias Poster = @Sendable (_ text: String, _ images: [Data]) async throws -> Void
 
 /// Owns the cross-post composer: text, per-network targets (persisted), character limits,
 /// and independent posting. Posting skips networks that already succeeded, so retrying a
@@ -11,8 +11,12 @@ public typealias Poster = @Sendable (_ text: String) async throws -> Void
 @Observable
 public final class ComposerStore {
     public var text = ""
+    /// Attached image data (JPEG), uploaded per network on post. Capped at 4 (both networks' max).
+    public var attachments: [Data] = []
     public var postToBluesky: Bool { didSet { defaults.set(postToBluesky, forKey: "postToBluesky") } }
     public var postToMastodon: Bool { didSet { defaults.set(postToMastodon, forKey: "postToMastodon") } }
+
+    public static let maxAttachments = 4
 
     public private(set) var succeeded: Set<Network> = []
     public private(set) var failed: [Network: String] = [:]
@@ -57,7 +61,7 @@ public final class ComposerStore {
 
     public var canPost: Bool {
         !isPosting && !selectedNetworks.isEmpty && !isOverLimit
-            && !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && (!text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty)
     }
 
     /// Posts to each selected network independently. Networks already in `succeeded` are
@@ -70,7 +74,7 @@ public final class ComposerStore {
         for network in selectedNetworks where !succeeded.contains(network) {
             guard let poster = posters[network] else { continue }
             do {
-                try await poster(text)
+                try await poster(text, attachments)
                 succeeded.insert(network)
             } catch {
                 failed[network] = (error as? LocalizedError)?.errorDescription ?? "Post failed."
@@ -82,6 +86,7 @@ public final class ComposerStore {
 
     public func reset() {
         text = ""
+        attachments = []
         succeeded = []
         failed = [:]
     }
