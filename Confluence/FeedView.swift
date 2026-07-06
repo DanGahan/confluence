@@ -5,6 +5,17 @@ import ConfluenceKit
 /// Which network(s) the feed shows. Filtering is client-side over the already-merged list.
 enum FeedFilter { case both, bluesky, mastodon }
 
+extension FeedFilter {
+    /// Window/tab title for this filter.
+    var title: String {
+        switch self { case .both: "Combined"; case .bluesky: "Bluesky"; case .mastodon: "Mastodon" }
+    }
+    /// Stable key for per-filter scroll-position persistence.
+    var scope: String {
+        switch self { case .both: "both"; case .bluesky: "bluesky"; case .mastodon: "mastodon" }
+    }
+}
+
 struct FeedView: View {
     @Environment(BlueskyAccountStore.self) private var bluesky
     @Environment(MastodonAccountStore.self) private var mastodon
@@ -102,10 +113,11 @@ struct FeedView: View {
         // Debounce: save the topmost visible post's id after scrolling settles.
         guard let id else { return }
         saveTask?.cancel()
+        let scope = networkFilter.scope
         saveTask = Task {
             try? await Task.sleep(for: .milliseconds(400))
             guard !Task.isCancelled else { return }
-            position.save(itemID: id)
+            position.save(itemID: id, for: scope)
         }
     }
 
@@ -161,6 +173,15 @@ struct FeedView: View {
             if composer.didPostAll { composer.reset(); Task { await feed.refresh() } }
         }) { ComposerView() }
         .handleProfileLinks()
+        .navigationTitle(networkFilter.title) // window/tab title reflects the current filter
+        .onChange(of: networkFilter) { old, _ in
+            // Remember where we were in the old filter; jump to the new filter's saved spot.
+            if let topID { position.save(itemID: topID, for: old.scope) }
+            if let saved = position.savedItemID(for: networkFilter.scope),
+               visibleItems.contains(where: { $0.id == saved }) {
+                topID = saved
+            }
+        }
     }
 
     @ToolbarContentBuilder private var feedToolbar: some ToolbarContent {
@@ -253,7 +274,7 @@ struct FeedView: View {
 
     /// On launch, scroll to the last-seen post if it's within the first ~3 pages.
     private func restoreScrollPosition() async {
-        guard !didRestore, let saved = position.savedItemID() else { return }
+        guard !didRestore, let saved = position.savedItemID(for: networkFilter.scope) else { return }
         didRestore = true
         var extraPages = 0
         while !feed.items.contains(where: { $0.id == saved }) && feed.hasMore && extraPages < 2 {

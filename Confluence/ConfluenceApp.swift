@@ -31,6 +31,7 @@ struct ConfluenceApp: App {
                 .environment(search)
                 .environment(composer)
                 .environment(postActions)
+                .background(FeedWindowConfigurator()) // prefer tabs so ⌘T adds a tab, not a window
         }
         .windowResizability(.contentMinSize)
         .commands { AppCommands() }
@@ -41,4 +42,30 @@ struct ConfluenceApp: App {
                 .environment(mastodon)
         }
     }
+}
+
+/// When a new feed window appears, folds it into an existing feed window's tab group so New Tab
+/// (⌘T) adds a *tab* to the current window rather than opening a separate window — regardless of
+/// the system "prefer tabs when opening documents" setting. Retries until the window attaches.
+private struct FeedWindowConfigurator: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        func apply() {
+            guard let window = view.window else {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { apply() }
+                return
+            }
+            window.tabbingIdentifier = "feed"
+            let others = NSApp.windows.filter { $0 !== window && $0.tabbingIdentifier == "feed" && $0.isVisible }
+            // Prefer an existing multi-tab group; otherwise start a group with any feed window.
+            if let host = others.first(where: { ($0.tabGroup?.windows.count ?? 0) > 1 }) ?? others.first,
+               window.tabGroup !== host.tabGroup {
+                host.addTabbedWindow(window, ordered: .above)
+                window.makeKeyAndOrderFront(nil)
+            }
+        }
+        DispatchQueue.main.async { apply() }
+        return view
+    }
+    func updateNSView(_ nsView: NSView, context: Context) {}
 }
