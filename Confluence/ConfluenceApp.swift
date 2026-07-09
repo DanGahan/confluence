@@ -3,6 +3,7 @@ import ConfluenceKit
 
 @main
 struct ConfluenceApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var bluesky: BlueskyAccountStore
     @State private var mastodon: MastodonAccountStore
     @State private var follows = FollowStore()
@@ -42,6 +43,37 @@ struct ConfluenceApp: App {
             SettingsView()
                 .environment(bluesky)
                 .environment(mastodon)
+        }
+    }
+}
+
+/// Ensures the main window is actually shown at launch. macOS state restoration can leave a
+/// SwiftUI `WindowGroup` app window-less after a relaunch — the app runs but no window appears
+/// until you click the Dock icon (which fires `applicationShouldHandleReopen`). We force the
+/// content window front at launch, and reopen one on Dock click when none is visible (#126).
+@MainActor
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        showMainWindow()
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag { showMainWindow() }
+        return true // let AppKit create/show a window if we didn't
+    }
+
+    /// The WindowGroup's window may not exist the instant we launch; retry briefly until it does,
+    /// then order it front and activate. Ignores the invisible helper/Settings windows.
+    private func showMainWindow(attempt: Int = 0) {
+        if let window = NSApp.windows.first(where: { $0.canBecomeMain && !$0.isMiniaturized && $0.isVisible })
+            ?? NSApp.windows.first(where: { $0.canBecomeMain }) {
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+        } else if attempt < 20 {
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(50))
+                showMainWindow(attempt: attempt + 1)
+            }
         }
     }
 }
