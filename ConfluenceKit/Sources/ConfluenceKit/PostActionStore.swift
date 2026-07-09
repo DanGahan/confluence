@@ -4,17 +4,26 @@ import Observation
 /// Per-network repost / like / block operations for a post. Configured by the app so token
 /// refresh stays in one place (like `FollowActions`).
 public struct PostActions: Sendable {
-    public let repost: @Sendable (FeedItem) async throws -> Void
-    public let like: @Sendable (FeedItem) async throws -> Void
+    /// `repost`/`like` return the created record's URI (Bluesky) so it can be undone later;
+    /// Mastodon returns nil (undo needs only the status id). `unrepost`/`unlike` receive that
+    /// URI back.
+    public let repost: @Sendable (FeedItem) async throws -> String?
+    public let unrepost: @Sendable (FeedItem, _ recordURI: String?) async throws -> Void
+    public let like: @Sendable (FeedItem) async throws -> String?
+    public let unlike: @Sendable (FeedItem, _ recordURI: String?) async throws -> Void
     public let block: @Sendable (FeedItem) async throws -> Void
     public let delete: @Sendable (FeedItem) async throws -> Void
 
-    public init(repost: @escaping @Sendable (FeedItem) async throws -> Void,
-                like: @escaping @Sendable (FeedItem) async throws -> Void,
+    public init(repost: @escaping @Sendable (FeedItem) async throws -> String?,
+                unrepost: @escaping @Sendable (FeedItem, String?) async throws -> Void,
+                like: @escaping @Sendable (FeedItem) async throws -> String?,
+                unlike: @escaping @Sendable (FeedItem, String?) async throws -> Void,
                 block: @escaping @Sendable (FeedItem) async throws -> Void,
                 delete: @escaping @Sendable (FeedItem) async throws -> Void) {
         self.repost = repost
+        self.unrepost = unrepost
         self.like = like
+        self.unlike = unlike
         self.block = block
         self.delete = delete
     }
@@ -27,6 +36,9 @@ public struct PostActions: Sendable {
 public final class PostActionStore {
     private var reposted: Set<String> = []
     private var liked: Set<String> = []
+    // Bluesky repost/like record URIs, kept so the action can be undone this session.
+    private var repostURIs: [String: String] = [:]
+    private var likeURIs: [String: String] = [:]
     private var blockedAuthors: Set<String> = []
     private var deletedPosts: Set<String> = []
     private var ownAuthorKeys: Set<String> = []
@@ -48,15 +60,50 @@ public final class PostActionStore {
     public func isOwn(_ item: FeedItem) -> Bool { ownAuthorKeys.contains(item.authorKey) }
     public func isDeleted(_ item: FeedItem) -> Bool { deletedPosts.contains(item.id) }
 
-    public func repost(_ item: FeedItem) async {
-        await run(item, add: item.id, to: \.reposted, failure: "Couldn't repost. Please try again.") {
-            try await $0.repost(item)
+    /// Repost if not already reposted this session, otherwise un-repost. Optimistic; reverts
+    /// on failure. The Bluesky undo deletes the repost record whose URI we kept.
+    public func toggleRepost(_ item: FeedItem) async {
+        guard let action = actions[item.network] else { return }
+        if reposted.contains(item.id) {
+            reposted.remove(item.id) // optimistic
+            do {
+                try await action.unrepost(item, repostURIs[item.id])
+                repostURIs[item.id] = nil
+            } catch {
+                reposted.insert(item.id) // revert
+                lastError = (error as? LocalizedError)?.errorDescription ?? "Couldn't undo repost. Please try again."
+            }
+        } else {
+            reposted.insert(item.id) // optimistic
+            do {
+                repostURIs[item.id] = try await action.repost(item)
+            } catch {
+                reposted.remove(item.id) // revert
+                lastError = (error as? LocalizedError)?.errorDescription ?? "Couldn't repost. Please try again."
+            }
         }
     }
 
-    public func like(_ item: FeedItem) async {
-        await run(item, add: item.id, to: \.liked, failure: "Couldn't like. Please try again.") {
-            try await $0.like(item)
+    /// Like if not already liked this session, otherwise un-like. Optimistic; reverts on failure.
+    public func toggleLike(_ item: FeedItem) async {
+        guard let action = actions[item.network] else { return }
+        if liked.contains(item.id) {
+            liked.remove(item.id) // optimistic
+            do {
+                try await action.unlike(item, likeURIs[item.id])
+                likeURIs[item.id] = nil
+            } catch {
+                liked.insert(item.id) // revert
+                lastError = (error as? LocalizedError)?.errorDescription ?? "Couldn't undo like. Please try again."
+            }
+        } else {
+            liked.insert(item.id) // optimistic
+            do {
+                likeURIs[item.id] = try await action.like(item)
+            } catch {
+                liked.remove(item.id) // revert
+                lastError = (error as? LocalizedError)?.errorDescription ?? "Couldn't like. Please try again."
+            }
         }
     }
 

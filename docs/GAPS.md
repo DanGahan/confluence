@@ -11,7 +11,7 @@ authoritative in-place markers), the SPEC, and open bug issues. When you add a
 |---|---|---|---|
 | G1 | **No 429 rate-limit backoff.** SPEC's non-functional requirements demand exponential backoff + user messaging on 429; nothing in either client handles it today. A 429 currently surfaces as a generic server error. | All API client files | **Now the top functional gap** — live/ticker mode (#91) shipped and polls every ~12s, so this is overdue (#104) |
 | G2 | **Bluesky auth is app-password only.** ATProto OAuth is the sanctioned path; app passwords bypass 2FA and will eventually be deprecated. | `BlueskyClient.swift`, `BlueskyAccountStore.swift` | When Bluesky announces deprecation, or before public distribution |
-| G3 | **Engagement is one-way.** Repost/like create records; there's no un-repost/un-like (needs `deleteRecord` on Bluesky, `unreblog`/`unfavourite` on Mastodon). UI shows optimistic state per session only. | `BlueskyEngagement.swift`, `MastodonEngagement.swift`, `PostActionStore` | When the UI grows an "undo" affordance |
+| ~~G3~~ | ~~Engagement is one-way~~ — **repaid.** Repost/like are now toggles: Bluesky un-repost/un-like via `deleteRecord` (record URI kept per session), Mastodon `unreblog`/`unfavourite`. Optimistic, reverts on failure. | — | Done (#106) |
 | ~~G4~~ | ~~Token refresh wired per-closure~~ — **repaid.** Centralised as `BlueskyAccountStore.withFreshSession` (refresh-once-and-retry), unit-tested. | — | Done (#107) |
 
 ## Implementation ceilings (`ponytail:` markers)

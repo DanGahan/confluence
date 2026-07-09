@@ -468,15 +468,13 @@ struct FeedRow: View {
     }
 
     @ViewBuilder private var postMenu: some View {
-        Button(postActions.isReposted(item) ? "Reposted" : "Repost", systemImage: "arrow.2.squarepath") {
-            Task { await postActions.repost(item) }
+        Button(postActions.isReposted(item) ? "Undo Repost" : "Repost", systemImage: "arrow.2.squarepath") {
+            Task { await postActions.toggleRepost(item) }
         }
-        .disabled(postActions.isReposted(item))
-        Button(postActions.isLiked(item) ? "Liked" : "Like",
+        Button(postActions.isLiked(item) ? "Unlike" : "Like",
                systemImage: postActions.isLiked(item) ? "star.fill" : "star") {
-            Task { await postActions.like(item) }
+            Task { await postActions.toggleLike(item) }
         }
-        .disabled(postActions.isLiked(item))
         if let url = item.postURL {
             Divider()
             ShareLink(item: url) { Label("Share…", systemImage: "square.and.arrow.up") }
