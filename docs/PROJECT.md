@@ -121,6 +121,13 @@ fallback).
 6. Rows render in a `ScrollView` + `LazyVStack` + `scrollTargetLayout`.
    Scroll position is debounce-saved (750 ms) per feed-filter scope and
    restored on launch if the post is still present and < 7 days old.
+7. **Live mode** (`FeedView.liveMode`, toolbar toggle) turns the feed into a
+   ticker: a `.task(id: liveMode && scenePhase == .active)` loops `feed.refresh()`
+   + `pinToTop()` every ~12s. Keying the task on that Bool means it stops when
+   the window backgrounds and restarts (with an immediate refresh) on refocus —
+   no manual timer teardown. `pinToTop()` sets `topID` to the newest post so
+   streamed-in posts stay at the top. Scroll-to-Top and Refresh are hidden while
+   it's on. No 429 backoff yet — see GAPS.md G1.
 
 ## Auth
 

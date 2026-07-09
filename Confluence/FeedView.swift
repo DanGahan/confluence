@@ -35,6 +35,11 @@ struct FeedView: View {
     @State private var topID: String?
     @State private var didRestore = false
     @State private var saveTask: Task<Void, Never>?
+    /// Live/ticker mode: auto-refresh on an interval and keep the feed pinned to the top (#91).
+    @State private var liveMode = false
+
+    /// How often live mode polls. ponytail: fixed; make it a setting if people want control.
+    private let livePollInterval: Duration = .seconds(12)
     private let position = FeedPositionStore()
 
     private var accountsKey: String {
@@ -75,6 +80,12 @@ struct FeedView: View {
     }
 
     private var refreshAction: () -> Void { { Task { await feed.refresh() } } }
+
+    /// Snap to the newest post — used after each live-mode refresh so streamed-in posts keep
+    /// the feed at the top rather than pushing the current anchor down.
+    private func pinToTop() {
+        if let first = visibleItems.first { topID = first.id }
+    }
 
     // ScrollView + LazyVStack + scrollTargetLayout: List doesn't report the top
     // visible id via .scrollPosition on macOS, which F6 (position save) needs.
@@ -158,6 +169,17 @@ struct FeedView: View {
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { Task { await notifications.refresh() } }
         }
+        // Live mode: refresh on an interval and re-pin to the top, only while frontmost. The
+        // task restarts when live mode toggles or the window's active state changes (so it
+        // stops polling when backgrounded and resumes on refocus). #91.
+        .task(id: liveMode && scenePhase == .active) {
+            guard liveMode, scenePhase == .active else { return }
+            while !Task.isCancelled {
+                await feed.refresh()   // FeedStore guards against overlapping refreshes
+                pinToTop()
+                try? await Task.sleep(for: livePollInterval)
+            }
+        }
         .focusedSceneValue(\.refreshFeed, refreshAction)
         .focusedSceneValue(\.scrollFeedToTop, scrollToTop)
         .focusedSceneValue(\.newPost) { showingComposer = true }
@@ -208,7 +230,8 @@ struct FeedView: View {
             .help(filterHelp)
             .accessibilityLabel(filterHelp)
         }
-        if isScrolledAway {
+        // Live mode pins to the top, so Scroll-to-Top and Refresh are redundant while it's on.
+        if isScrolledAway && !liveMode {
             ToolbarItem {
                 Button { scrollToTop() } label: { Image(systemName: "arrow.up.to.line") }
                     .help("Scroll to Top")
@@ -224,9 +247,21 @@ struct FeedView: View {
             .accessibilityLabel(notifications.unreadCount > 0 ? "Notifications, \(notifications.unreadCount) unread" : "Notifications")
         }
         ToolbarItem {
-            Button { Task { await feed.refresh() } } label: { Image(systemName: "arrow.clockwise") }
-                .help("Refresh")
-                .accessibilityLabel("Refresh")
+            Button { liveMode.toggle() } label: {
+                Image(systemName: liveMode ? "dot.radiowaves.left.and.right" : "dot.radiowaves.right")
+                    .symbolEffect(.variableColor.iterative, isActive: liveMode)
+                    .foregroundStyle(liveMode ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary))
+            }
+            .help(liveMode ? "Live mode on — auto-refreshing" : "Live mode")
+            .accessibilityLabel("Live mode")
+            .accessibilityValue(liveMode ? "On" : "Off")
+        }
+        if !liveMode {
+            ToolbarItem {
+                Button { Task { await feed.refresh() } } label: { Image(systemName: "arrow.clockwise") }
+                    .help("Refresh")
+                    .accessibilityLabel("Refresh")
+            }
         }
     }
 
