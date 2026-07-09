@@ -63,8 +63,12 @@ private struct FeedWindowConfigurator: NSViewRepresentable {
             if let host = others.first(where: { ($0.tabGroup?.windows.count ?? 0) > 1 }) ?? others.first,
                window.tabGroup !== host.tabGroup {
                 host.addTabbedWindow(window, ordered: .above)
-                window.makeKeyAndOrderFront(nil)
             }
+            // Bring the new window forward and activate the app. On a fresh launch SwiftUI
+            // doesn't reliably make us frontmost (#94); a user-opened tab/window is meant to
+            // come forward too.
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
         }
         DispatchQueue.main.async { apply() }
         return view
