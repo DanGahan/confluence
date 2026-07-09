@@ -1,5 +1,6 @@
 import Foundation
 import Security
+import Synchronization
 
 /// Persistence for credentials. The app uses `Keychain`; tests use an in-memory double.
 public protocol SecureStore: Sendable {
@@ -23,16 +24,15 @@ public extension SecureStore {
 
 /// In-memory credential store — used for UI tests so they never touch the real Keychain
 /// (which, for unsigned/ad-hoc builds, pops a system prompt on every access).
-public final class EphemeralSecureStore: SecureStore, @unchecked Sendable {
-    private let lock = NSLock()
-    private var items: [String: Data] = [:]
+public final class EphemeralSecureStore: SecureStore {
+    private let items = Mutex<[String: Data]>([:])
 
     public init() {}
 
-    public func set(_ data: Data, for account: String) throws { lock.withLock { items[account] = data } }
-    public func get(_ account: String) throws -> Data? { lock.withLock { items[account] } }
-    public func delete(_ account: String) throws { lock.withLock { _ = items.removeValue(forKey: account) } }
-    public func deleteAll() throws { lock.withLock { items.removeAll() } }
+    public func set(_ data: Data, for account: String) throws { items.withLock { $0[account] = data } }
+    public func get(_ account: String) throws -> Data? { items.withLock { $0[account] } }
+    public func delete(_ account: String) throws { items.withLock { _ = $0.removeValue(forKey: account) } }
+    public func deleteAll() throws { items.withLock { $0.removeAll() } }
 }
 
 /// Thin wrapper over the Security framework for generic-password items.

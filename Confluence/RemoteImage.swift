@@ -45,8 +45,13 @@ actor ImageLoader {
                 if let image = NSImage(data: data) { return image }
                 throw URLError(.cannotDecodeContentData)
             } catch {
-                // ponytail: fixed 3 tries w/ linear backoff; add jitter/cap if it ever matters.
-                if attempt < 2 { try? await Task.sleep(for: .milliseconds(300 * (attempt + 1))) }
+                // Exponential backoff with jitter, capped — so a scroll burst that 429s many
+                // images at once doesn't retry them all in lockstep (thundering herd).
+                if attempt < 2 {
+                    let base = min(300 << attempt, 2000)          // 300, 600, … capped at 2000ms
+                    let backoff = base + Int.random(in: 0...base / 2)
+                    try? await Task.sleep(for: .milliseconds(backoff))
+                }
             }
         }
         imageLog.error("image load failed after retries: \(url.host ?? "?", privacy: .public)")

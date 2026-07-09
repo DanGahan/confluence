@@ -19,7 +19,7 @@ authoritative in-place markers), the SPEC, and open bug issues. When you add a
 | # | Shortcut | Where | Repay when |
 |---|---|---|---|
 | G5 | Mastodon HTML → text is a regex strip + common entities | `MastodonFeed.swift` (`htmlToPlainText`) | If posts render wrong entities/tags in the wild; swap for a real parser |
-| G6 | Image retry: fixed 3 tries, linear backoff, no jitter/cap | `RemoteImage.swift` | If thundering-herd or flaky-CDN symptoms appear |
+| ~~G6~~ | ~~Image retry: linear backoff, no jitter/cap~~ — **repaid.** Now exponential backoff with jitter, capped at 2000ms. | `RemoteImage.swift` | Done |
 | G7 | Composer images: fixed 1600 px / 0.8 JPEG, no alt text, no HEIC | `ComposerView.swift` | Alt text is an accessibility gap — repay ahead of the others |
 | G8 | Keychain falls back to legacy keychain on `errSecMissingEntitlement` (unsigned dev builds only) | `Keychain.swift` | Delete the fallback once builds are signed with a real team |
 | G9 | `LinkClickRouter` consumes mouse-down on link glyphs, so a drag-select can't *start* on a link | `RichTextLabel.swift` | Only if users report it; accepted trade for working links |
@@ -31,7 +31,7 @@ authoritative in-place markers), the SPEC, and open bug issues. When you add a
 |---|---|---|---|
 | G11 | **`FeedView.swift` is 674 lines** and holds all the closure-wiring (`makeFetchers` etc.) — borderline business logic living in a view file. | `FeedView.swift` | Next feature that touches the wiring: extract a `FeedWiring`/composition-root type (still app-side, but its own file) |
 | G12 | `FeedWindowConfigurator` polls `asyncAfter(0.05)` until the window exists to force tab grouping | `ConfluenceApp.swift` | If Apple ships SwiftUI tabbing control; until then it's contained |
-| G13 | `EphemeralSecureStore` is `@unchecked Sendable` (NSLock-guarded dictionary) | `Keychain.swift` | Cosmetic; swap for `Mutex` when minimum toolchain allows |
+| ~~G13~~ | ~~`EphemeralSecureStore` is `@unchecked Sendable`~~ — **repaid.** Now `Synchronization.Mutex`, checked-Sendable (macOS 26 floor). | `Keychain.swift` | Done (#110) |
 
 ## Open bugs that are debt until fixed
 
