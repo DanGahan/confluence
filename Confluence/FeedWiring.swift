@@ -65,12 +65,20 @@ struct FeedWiring {
             let store = bluesky, client = BlueskyClient()
             actions[.bluesky] = PostActions(
                 repost: { item in
-                    guard let cid = item.cid else { return }
-                    _ = try await store.withFreshSession { try await client.repost(accessToken: $0.accessJwt, repoDID: $0.did, uri: item.rawId, cid: cid) }
+                    guard let cid = item.cid else { return nil }
+                    return try await store.withFreshSession { try await client.repost(accessToken: $0.accessJwt, repoDID: $0.did, uri: item.rawId, cid: cid) }
+                },
+                unrepost: { _, recordURI in
+                    guard let recordURI else { return }
+                    try await store.withFreshSession { try await client.deleteRecord(accessToken: $0.accessJwt, uri: recordURI) }
                 },
                 like: { item in
-                    guard let cid = item.cid else { return }
-                    _ = try await store.withFreshSession { try await client.like(accessToken: $0.accessJwt, repoDID: $0.did, uri: item.rawId, cid: cid) }
+                    guard let cid = item.cid else { return nil }
+                    return try await store.withFreshSession { try await client.like(accessToken: $0.accessJwt, repoDID: $0.did, uri: item.rawId, cid: cid) }
+                },
+                unlike: { _, recordURI in
+                    guard let recordURI else { return }
+                    try await store.withFreshSession { try await client.deleteRecord(accessToken: $0.accessJwt, uri: recordURI) }
                 },
                 block: { item in
                     _ = try await store.withFreshSession { try await client.block(accessToken: $0.accessJwt, repoDID: $0.did, subjectDID: item.authorID) }
@@ -83,8 +91,10 @@ struct FeedWiring {
         if let session = mastodon.session {
             let client = MastodonClient()
             actions[.mastodon] = PostActions(
-                repost: { item in try await client.reblog(host: session.host, accessToken: session.accessToken, statusID: item.threadID) },
-                like: { item in try await client.favourite(host: session.host, accessToken: session.accessToken, statusID: item.threadID) },
+                repost: { item in try await client.reblog(host: session.host, accessToken: session.accessToken, statusID: item.threadID); return nil },
+                unrepost: { item, _ in try await client.unreblog(host: session.host, accessToken: session.accessToken, statusID: item.threadID) },
+                like: { item in try await client.favourite(host: session.host, accessToken: session.accessToken, statusID: item.threadID); return nil },
+                unlike: { item, _ in try await client.unfavourite(host: session.host, accessToken: session.accessToken, statusID: item.threadID) },
                 block: { item in try await client.block(host: session.host, accessToken: session.accessToken, accountID: item.authorID) },
                 delete: { item in try await client.deletePost(host: session.host, accessToken: session.accessToken, statusID: item.threadID) }
             )

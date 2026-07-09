@@ -54,6 +54,34 @@ struct EngagementTests {
         try await client.deletePost(accessToken: "t", uri: "at://did:me/app.bsky.feed.post/abc")
     }
 
+    @Test func blueskyDeleteRecordParsesRepostURI() async throws {
+        // Un-repost/un-like delete the repost/like record by its AT URI.
+        let client = BlueskyClient(session: MockURLProtocol.session { request in
+            #expect(request.url?.path == "/xrpc/com.atproto.repo.deleteRecord")
+            let body = try JSONSerialization.jsonObject(with: MockURLProtocol.body(of: request)) as! [String: Any]
+            #expect(body["repo"] as? String == "did:me")
+            #expect(body["collection"] as? String == "app.bsky.feed.repost")
+            #expect(body["rkey"] as? String == "xyz")
+            return (request.status(200), Data())
+        })
+        try await client.deleteRecord(accessToken: "t", uri: "at://did:me/app.bsky.feed.repost/xyz")
+    }
+
+    @Test func mastodonUnreblogAndUnfavouritePaths() async throws {
+        let un = MastodonClient(session: MockURLProtocol.session { request in
+            #expect(request.httpMethod == "POST")
+            #expect(request.url?.path == "/api/v1/statuses/42/unreblog")
+            return (request.status(200), Data())
+        })
+        try await un.unreblog(host: "m.social", accessToken: "t", statusID: "42")
+
+        let unf = MastodonClient(session: MockURLProtocol.session { request in
+            #expect(request.url?.path == "/api/v1/statuses/7/unfavourite")
+            return (request.status(200), Data())
+        })
+        try await unf.unfavourite(host: "m.social", accessToken: "t", statusID: "7")
+    }
+
     @Test func mastodonDeletePostSendsDELETE() async throws {
         let client = MastodonClient(session: MockURLProtocol.session { request in
             #expect(request.httpMethod == "DELETE")

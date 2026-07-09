@@ -6,9 +6,19 @@ extension MastodonClient {
         try await action(host: host, accessToken: accessToken, path: "/api/v1/statuses/\(statusID)/reblog")
     }
 
+    /// `POST /api/v1/statuses/:id/unreblog`
+    public func unreblog(host: String, accessToken: String, statusID: String) async throws {
+        try await action(host: host, accessToken: accessToken, path: "/api/v1/statuses/\(statusID)/unreblog")
+    }
+
     /// `POST /api/v1/statuses/:id/favourite`
     public func favourite(host: String, accessToken: String, statusID: String) async throws {
         try await action(host: host, accessToken: accessToken, path: "/api/v1/statuses/\(statusID)/favourite")
+    }
+
+    /// `POST /api/v1/statuses/:id/unfavourite`
+    public func unfavourite(host: String, accessToken: String, statusID: String) async throws {
+        try await action(host: host, accessToken: accessToken, path: "/api/v1/statuses/\(statusID)/unfavourite")
     }
 
     /// `POST /api/v1/accounts/:id/block`

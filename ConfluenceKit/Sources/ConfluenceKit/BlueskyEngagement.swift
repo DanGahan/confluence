@@ -28,8 +28,9 @@ extension BlueskyClient {
         ])
     }
 
-    /// `com.atproto.repo.deleteRecord` — deletes the signed-in user's own post by its AT URI.
-    public func deletePost(accessToken: String, uri: String) async throws {
+    /// `com.atproto.repo.deleteRecord` — deletes any record the user owns by its AT URI:
+    /// a post (delete), or a repost/like record (un-repost/un-like).
+    public func deleteRecord(accessToken: String, uri: String) async throws {
         let parts = uri.replacingOccurrences(of: "at://", with: "").split(separator: "/", maxSplits: 2).map(String.init)
         guard parts.count == 3 else { throw BlueskyError.malformedResponse }
         var request = URLRequest(url: pdsURL.appending(path: "xrpc/com.atproto.repo.deleteRecord"))
@@ -48,7 +49,11 @@ extension BlueskyClient {
         }
     }
 
-    // ponytail: one-way create; add deleteRecord-based undo (un-repost/un-like) if the UI needs it.
+    /// Deletes the signed-in user's own post by its AT URI.
+    public func deletePost(accessToken: String, uri: String) async throws {
+        try await deleteRecord(accessToken: accessToken, uri: uri)
+    }
+
     private func createRecord(accessToken: String, repoDID: String, collection: String, record: [String: Any]) async throws -> String {
         var request = URLRequest(url: pdsURL.appending(path: "xrpc/com.atproto.repo.createRecord"))
         request.httpMethod = "POST"
