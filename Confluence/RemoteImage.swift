@@ -54,7 +54,7 @@ actor ImageLoader {
     }
 }
 
-private let imageLog = Logger(subsystem: "Confluence", category: "images")
+private let imageLog = Logger(subsystem: "com.dangahan.confluence", category: "images")
 
 /// Cached async image. Replaces AsyncImage, which on macOS cancels in-flight loads when a row
 /// scrolls off and doesn't reliably retry. Cache hits render with no placeholder flash.
