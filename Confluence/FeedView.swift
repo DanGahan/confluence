@@ -582,6 +582,9 @@ struct FeedRow: View {
                         }
                     }
                 }
+                ForEach(item.videos) { video in
+                    PostVideoView(video: video)
+                }
                 if let card = item.linkCard {
                     LinkCardView(card: card)
                 }

@@ -70,6 +70,61 @@ struct FeedDecodingTests {
         #expect(item.imageURLs.isEmpty)
     }
 
+    @Test func decodesBlueskyVideoEmbed() async throws {
+        let json = """
+        {
+          "feed": [{
+            "post": {
+              "uri": "at://did/app.bsky.feed.post/vid",
+              "author": {"did": "did:plc:v", "handle": "v.bsky.social"},
+              "record": {"text": "watch this", "createdAt": "2026-07-01T10:00:00.000Z"},
+              "embed": {
+                "$type": "app.bsky.embed.video#view",
+                "playlist": "https://video.cdn/playlist.m3u8",
+                "thumbnail": "https://video.cdn/thumb.jpg",
+                "aspectRatio": {"width": 1920, "height": 1080}
+              }
+            }
+          }]
+        }
+        """.data(using: .utf8)!
+        let client = BlueskyClient(session: MockURLProtocol.session { ($0.status(200), json) })
+        let item = try #require(try await client.timeline(accessToken: "tok", cursor: nil).items.first)
+        let video = try #require(item.videos.first)
+        #expect(video.url.absoluteString == "https://video.cdn/playlist.m3u8")
+        #expect(video.thumbnailURL?.absoluteString == "https://video.cdn/thumb.jpg")
+        #expect(item.imageURLs.isEmpty)
+        #expect(item.linkCard == nil)
+    }
+
+    @Test func decodesBlueskyRecordWithMediaVideo() async throws {
+        // A quote post that also embeds a video: the video lives under `media`.
+        let json = """
+        {
+          "feed": [{
+            "post": {
+              "uri": "at://did/app.bsky.feed.post/rwm",
+              "author": {"did": "did:plc:r", "handle": "r.bsky.social"},
+              "record": {"text": "quote + clip", "createdAt": "2026-07-01T10:00:00.000Z"},
+              "embed": {
+                "$type": "app.bsky.embed.recordWithMedia#view",
+                "media": {
+                  "$type": "app.bsky.embed.video#view",
+                  "playlist": "https://video.cdn/nested.m3u8",
+                  "thumbnail": "https://video.cdn/nested-thumb.jpg"
+                }
+              }
+            }
+          }]
+        }
+        """.data(using: .utf8)!
+        let client = BlueskyClient(session: MockURLProtocol.session { ($0.status(200), json) })
+        let item = try #require(try await client.timeline(accessToken: "tok", cursor: nil).items.first)
+        let video = try #require(item.videos.first)
+        #expect(video.url.absoluteString == "https://video.cdn/nested.m3u8")
+        #expect(video.thumbnailURL?.absoluteString == "https://video.cdn/nested-thumb.jpg")
+    }
+
     @Test func blueskyPassesCursorAsQuery() async throws {
         let client = BlueskyClient(session: MockURLProtocol.session { request in
             #expect(request.url?.query?.contains("cursor=abc") == true)
@@ -171,5 +226,36 @@ struct FeedDecodingTests {
         #expect(boost.text == "original")
         #expect(boost.repostedBy == "Dave")          // attributed to the booster
         #expect(boost.authorHandle == "erin@other.social")
+    }
+
+    @Test func decodesMastodonVideoAndGifvAttachments() async throws {
+        let json = """
+        [
+          {
+            "id": "201", "created_at": "2026-07-01T09:00:00.000Z", "content": "<p>clip</p>",
+            "account": {"id": "1", "display_name": "Vic", "acct": "vic", "avatar": "https://m/v.png"},
+            "media_attachments": [
+              {"type": "video", "url": "https://m/clip.mp4", "preview_url": "https://m/clip-thumb.jpg"}
+            ]
+          },
+          {
+            "id": "200", "created_at": "2026-07-01T08:00:00.000Z", "content": "<p>loop</p>",
+            "account": {"id": "2", "display_name": "Gina", "acct": "gina", "avatar": "https://m/g.png"},
+            "media_attachments": [
+              {"type": "gifv", "url": "https://m/loop.mp4", "preview_url": "https://m/loop-thumb.jpg"}
+            ]
+          }
+        ]
+        """.data(using: .utf8)!
+        let client = MastodonClient(session: MockURLProtocol.session { ($0.status(200), json) })
+        let page = try await client.homeTimeline(host: "mastodon.social", accessToken: "t", maxId: nil)
+
+        let clip = try #require(page.items.first { $0.authorName == "Vic" })
+        #expect(clip.imageURLs.isEmpty)
+        #expect(clip.videos.map(\.url.absoluteString) == ["https://m/clip.mp4"])
+        #expect(clip.videos.first?.thumbnailURL?.absoluteString == "https://m/clip-thumb.jpg")
+
+        let gif = try #require(page.items.first { $0.authorName == "Gina" })
+        #expect(gif.videos.map(\.url.absoluteString) == ["https://m/loop.mp4"])
     }
 }
