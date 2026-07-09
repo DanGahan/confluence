@@ -1,5 +1,11 @@
 import SwiftUI
 import ConfluenceKit
+import os
+
+/// Breadcrumbs for the thread-open path — the suspected culprit behind the beachball in #102.
+/// A live capture (`log show --predicate 'subsystem == "com.dangahan.confluence"' --last 5m`)
+/// shows the open → loaded/failed gap; if it hangs after "loaded", the stall is in rendering.
+private let log = Logger(subsystem: "com.dangahan.confluence", category: "thread")
 
 /// The full conversation around a post, per-network, in chronological order with the tapped
 /// post highlighted. Fetched via getPostThread (Bluesky) / statuses/:id/context (Mastodon).
@@ -57,13 +63,23 @@ struct ThreadView: View {
     private func load() async {
         loading = true
         defer { loading = false }
-        switch item.network {
-        case .bluesky:
-            guard let session = bluesky.session else { return }
-            thread = try? await BlueskyClient().postThread(accessToken: session.accessJwt, uri: item.threadID)
-        case .mastodon:
-            guard let session = mastodon.session else { return }
-            thread = try? await MastodonClient().statusContext(host: session.host, accessToken: session.accessToken, statusID: item.threadID)
+        // Thread/post ids are public identifiers (no secrets), safe to log %{public}.
+        // .notice (not .info) so the breadcrumb persists to the log archive and is retrievable
+        // after a hang — info-level messages can be pruned before you go looking.
+        log.notice("opening thread \(item.threadID, privacy: .public) on \(item.network.rawValue, privacy: .public)")
+        do {
+            switch item.network {
+            case .bluesky:
+                guard let session = bluesky.session else { log.error("thread open: no Bluesky session"); return }
+                thread = try await BlueskyClient().postThread(accessToken: session.accessJwt, uri: item.threadID)
+            case .mastodon:
+                guard let session = mastodon.session else { log.error("thread open: no Mastodon session"); return }
+                thread = try await MastodonClient().statusContext(host: session.host, accessToken: session.accessToken, statusID: item.threadID)
+            }
+            log.notice("thread \(item.threadID, privacy: .public) loaded \(thread?.items.count ?? 0, privacy: .public) posts")
+        } catch {
+            // Previously swallowed by `try?`; log so a failed (vs hung) load is distinguishable.
+            log.error("thread \(item.threadID, privacy: .public) load failed: \(error.localizedDescription, privacy: .public)")
         }
     }
 }
