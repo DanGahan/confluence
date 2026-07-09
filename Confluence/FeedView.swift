@@ -144,18 +144,19 @@ struct FeedView: View {
             }
         }
         .task(id: accountsKey) {
-            feed.setFetchers(makeFetchers())
-            follows.setActions(makeFollowActions())
-            postActions.setActions(makePostActions())
-            notifications.setFetchers(makeNotificationFetchers())
-            search.setFetchers(makeSearchFetchers())
+            let wiring = FeedWiring(bluesky: bluesky, mastodon: mastodon)
+            feed.setFetchers(wiring.pageFetchers())
+            follows.setActions(wiring.followActions())
+            postActions.setActions(wiring.postActions())
+            notifications.setFetchers(wiring.notificationFetchers())
+            search.setFetchers(wiring.searchFetchers())
             // Configure the composer concurrently — it awaits the Mastodon character-limit
             // network call (slow instances stall it for seconds). Awaiting it before the feed
             // refresh left the feed empty on open until a manual refresh (#76).
-            async let composerReady: Void = configureComposer()
+            async let composerReady: Void = configureComposer(wiring)
             await feed.refresh()
-            await seedMastodonFollowState()
-            await seedOwnership()
+            await seedMastodonFollowState(wiring)
+            await seedOwnership(wiring)
             await restoreScrollPosition()
             await composerReady
             await notifications.refresh()
@@ -321,208 +322,24 @@ struct FeedView: View {
         topID = saved
     }
 
-    private func makeFetchers() -> [Network: PageFetcher] {
-        var fetchers: [Network: PageFetcher] = [:]
-        if bluesky.isLoggedIn {
-            let store = bluesky
-            let client = BlueskyClient()
-            fetchers[.bluesky] = { cursor in
-                guard let token = await store.session?.accessJwt else { throw BlueskyError.invalidCredentials }
-                do {
-                    return try await client.timeline(accessToken: token, cursor: cursor)
-                } catch BlueskyError.invalidCredentials {
-                    // Access token expired — refresh once and retry.
-                    try await store.refresh()
-                    guard let fresh = await store.session?.accessJwt else { throw BlueskyError.invalidCredentials }
-                    return try await client.timeline(accessToken: fresh, cursor: cursor)
-                }
-            }
-        }
-        if let session = mastodon.session {
-            let client = MastodonClient()
-            fetchers[.mastodon] = { cursor in
-                try await client.homeTimeline(host: session.host, accessToken: session.accessToken, maxId: cursor)
-            }
-        }
-        return fetchers
-    }
-
-    private func makeFollowActions() -> [Network: FollowActions] {
-        var actions: [Network: FollowActions] = [:]
-        if bluesky.isLoggedIn {
-            let store = bluesky
-            let client = BlueskyClient()
-            actions[.bluesky] = FollowActions(
-                follow: { did in
-                    guard let session = await store.session else { throw BlueskyError.invalidCredentials }
-                    return try await client.follow(accessToken: session.accessJwt, repoDID: session.did, subjectDID: did)
-                },
-                unfollow: { _, followURI in
-                    guard let session = await store.session, let followURI else { return }
-                    try await client.unfollow(accessToken: session.accessJwt, followURI: followURI)
-                }
-            )
-        }
-        if let session = mastodon.session {
-            let client = MastodonClient()
-            actions[.mastodon] = FollowActions(
-                follow: { id in
-                    try await client.follow(host: session.host, accessToken: session.accessToken, accountID: id)
-                    return nil
-                },
-                unfollow: { id, _ in
-                    try await client.unfollow(host: session.host, accessToken: session.accessToken, accountID: id)
-                }
-            )
-        }
-        return actions
-    }
-
-    private func makePostActions() -> [Network: PostActions] {
-        var actions: [Network: PostActions] = [:]
-        if bluesky.isLoggedIn {
-            let store = bluesky
-            let client = BlueskyClient()
-            // Bluesky access tokens expire; refresh once and retry on invalidCredentials.
-            @Sendable func withSession<T>(_ body: @Sendable (BlueskySession) async throws -> T) async throws -> T {
-                guard let session = await store.session else { throw BlueskyError.invalidCredentials }
-                do { return try await body(session) }
-                catch BlueskyError.invalidCredentials {
-                    try await store.refresh()
-                    guard let fresh = await store.session else { throw BlueskyError.invalidCredentials }
-                    return try await body(fresh)
-                }
-            }
-            actions[.bluesky] = PostActions(
-                repost: { item in
-                    guard let cid = item.cid else { return }
-                    _ = try await withSession { try await client.repost(accessToken: $0.accessJwt, repoDID: $0.did, uri: item.rawId, cid: cid) }
-                },
-                like: { item in
-                    guard let cid = item.cid else { return }
-                    _ = try await withSession { try await client.like(accessToken: $0.accessJwt, repoDID: $0.did, uri: item.rawId, cid: cid) }
-                },
-                block: { item in
-                    _ = try await withSession { try await client.block(accessToken: $0.accessJwt, repoDID: $0.did, subjectDID: item.authorID) }
-                },
-                delete: { item in
-                    try await withSession { try await client.deletePost(accessToken: $0.accessJwt, uri: item.rawId) }
-                }
-            )
-        }
-        if let session = mastodon.session {
-            let client = MastodonClient()
-            actions[.mastodon] = PostActions(
-                repost: { item in try await client.reblog(host: session.host, accessToken: session.accessToken, statusID: item.threadID) },
-                like: { item in try await client.favourite(host: session.host, accessToken: session.accessToken, statusID: item.threadID) },
-                block: { item in try await client.block(host: session.host, accessToken: session.accessToken, accountID: item.authorID) },
-                delete: { item in try await client.deletePost(host: session.host, accessToken: session.accessToken, statusID: item.threadID) }
-            )
-        }
-        return actions
-    }
+    // The per-network networking closures live in FeedWiring (G11); these thin wrappers apply
+    // its output to the app's stores.
 
     /// Identify the signed-in user per network so own-post actions (Delete) can appear.
-    private func seedOwnership() async {
-        var keys: Set<String> = []
-        if let did = bluesky.session?.did { keys.insert("\(Network.bluesky.rawValue):\(did)") }
-        if let session = mastodon.session,
-           let me = try? await MastodonClient().currentAccount(host: session.host, accessToken: session.accessToken) {
-            keys.insert("\(Network.mastodon.rawValue):\(me.authorID)")
-        }
-        postActions.setOwnAuthorKeys(keys)
-    }
-
-    private func makeNotificationFetchers() -> [Network: NotificationFetcher] {
-        var fetchers: [Network: NotificationFetcher] = [:]
-        if bluesky.isLoggedIn {
-            let store = bluesky
-            let client = BlueskyClient()
-            fetchers[.bluesky] = {
-                guard let token = await store.session?.accessJwt else { throw BlueskyError.invalidCredentials }
-                do {
-                    return try await client.notifications(accessToken: token)
-                } catch BlueskyError.invalidCredentials {
-                    try await store.refresh()
-                    guard let fresh = await store.session?.accessJwt else { throw BlueskyError.invalidCredentials }
-                    return try await client.notifications(accessToken: fresh)
-                }
-            }
-        }
-        if let session = mastodon.session {
-            let client = MastodonClient()
-            fetchers[.mastodon] = {
-                try await client.notifications(host: session.host, accessToken: session.accessToken)
-            }
-        }
-        return fetchers
-    }
-
-    private func makeSearchFetchers() -> [Network: SearchFetcher] {
-        var fetchers: [Network: SearchFetcher] = [:]
-        if bluesky.isLoggedIn {
-            let store = bluesky
-            let client = BlueskyClient()
-            fetchers[.bluesky] = { query, cursor in
-                guard let token = await store.session?.accessJwt else { return SearchResults(failed: true) }
-                return await client.search(accessToken: token, query: query, cursor: cursor)
-            }
-        }
-        if let session = mastodon.session {
-            let client = MastodonClient()
-            fetchers[.mastodon] = { query, cursor in
-                await client.search(host: session.host, accessToken: session.accessToken, query: query, cursor: cursor)
-            }
-        }
-        return fetchers
+    private func seedOwnership(_ wiring: FeedWiring) async {
+        postActions.setOwnAuthorKeys(await wiring.ownAuthorKeys())
     }
 
     /// Mastodon timelines omit follow-state; fetch relationships for loaded Mastodon authors.
-    private func seedMastodonFollowState() async {
-        guard let session = mastodon.session else { return }
-        let ids = Array(Set(feed.items.filter { $0.network == .mastodon }.map(\.authorID))).prefix(40)
-        guard !ids.isEmpty else { return }
-        let states = await MastodonClient().relationships(host: session.host, accessToken: session.accessToken, accountIDs: Array(ids))
+    private func seedMastodonFollowState(_ wiring: FeedWiring) async {
+        let ids = Array(Set(feed.items.filter { $0.network == .mastodon }.map(\.authorID)).prefix(40))
+        guard let states = await wiring.mastodonFollowState(authorIDs: ids) else { return }
         follows.seed([.mastodon: states])
     }
 
-    private func configureComposer() async {
-        var posters: [Network: Poster] = [:]
-        var limits: [Network: Int] = [:]
-        if bluesky.isLoggedIn {
-            let store = bluesky
-            let client = BlueskyClient()
-            posters[.bluesky] = { text, images in
-                guard let session = await store.session else { throw BlueskyError.invalidCredentials }
-                func attempt(_ s: BlueskySession) async throws {
-                    var blobs: [Data] = []
-                    for data in images {
-                        blobs.append(try await client.uploadImage(accessToken: s.accessJwt, data: data, mimeType: "image/jpeg"))
-                    }
-                    _ = try await client.post(accessToken: s.accessJwt, repoDID: s.did, text: text, imageBlobs: blobs)
-                }
-                do { try await attempt(session) }
-                catch BlueskyError.invalidCredentials {
-                    try await store.refresh()
-                    guard let fresh = await store.session else { throw BlueskyError.invalidCredentials }
-                    try await attempt(fresh)
-                }
-            }
-            limits[.bluesky] = 300
-        }
-        if let session = mastodon.session {
-            let client = MastodonClient()
-            posters[.mastodon] = { text, images in
-                var mediaIDs: [String] = []
-                for (i, data) in images.enumerated() {
-                    mediaIDs.append(try await client.uploadImage(host: session.host, accessToken: session.accessToken,
-                                                                 data: data, filename: "image\(i).jpg", mimeType: "image/jpeg"))
-                }
-                try await client.post(host: session.host, accessToken: session.accessToken, text: text, mediaIDs: mediaIDs)
-            }
-            limits[.mastodon] = await client.characterLimit(host: session.host)
-        }
-        composer.configure(posters: posters, limits: limits)
+    private func configureComposer(_ wiring: FeedWiring) async {
+        let config = await wiring.composerConfig()
+        composer.configure(posters: config.posters, limits: config.limits)
     }
 
     @ViewBuilder private var followToast: some View {

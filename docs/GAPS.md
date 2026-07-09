@@ -9,10 +9,10 @@ authoritative in-place markers), the SPEC, and open bug issues. When you add a
 
 | # | Gap | Where | Repay when |
 |---|---|---|---|
-| G1 | **No 429 rate-limit backoff.** SPEC's non-functional requirements demand exponential backoff + user messaging on 429; nothing in either client handles it today. A 429 currently surfaces as a generic server error. | All API client files | Before any feature that raises request volume (live/ticker mode #91 polls every 10–15 s — do G1 first) |
+| G1 | **No 429 rate-limit backoff.** SPEC's non-functional requirements demand exponential backoff + user messaging on 429; nothing in either client handles it today. A 429 currently surfaces as a generic server error. | All API client files | **Now the top functional gap** — live/ticker mode (#91) shipped and polls every ~12s, so this is overdue (#104) |
 | G2 | **Bluesky auth is app-password only.** ATProto OAuth is the sanctioned path; app passwords bypass 2FA and will eventually be deprecated. | `BlueskyClient.swift`, `BlueskyAccountStore.swift` | When Bluesky announces deprecation, or before public distribution |
 | G3 | **Engagement is one-way.** Repost/like create records; there's no un-repost/un-like (needs `deleteRecord` on Bluesky, `unreblog`/`unfavourite` on Mastodon). UI shows optimistic state per session only. | `BlueskyEngagement.swift`, `MastodonEngagement.swift`, `PostActionStore` | When the UI grows an "undo" affordance |
-| G4 | **Token refresh is wired per-closure, not centralized.** Each fetcher closure in `FeedView.make…()` carries its own catch-refresh-retry dance (`withSession` helpers). Correct, tested, but duplicated ~6×. | `FeedView.swift` 289–490 | Next time a new endpoint set is added — extract a shared `withFreshBlueskyToken` wrapper into ConfluenceKit then |
+| ~~G4~~ | ~~Token refresh wired per-closure~~ — **repaid.** Centralised as `BlueskyAccountStore.withFreshSession` (refresh-once-and-retry), unit-tested. | — | Done (#107) |
 
 ## Implementation ceilings (`ponytail:` markers)
 
@@ -29,7 +29,7 @@ authoritative in-place markers), the SPEC, and open bug issues. When you add a
 
 | # | Gap | Where | Repay when |
 |---|---|---|---|
-| G11 | **`FeedView.swift` is 674 lines** and holds all the closure-wiring (`makeFetchers` etc.) — borderline business logic living in a view file. | `FeedView.swift` | Next feature that touches the wiring: extract a `FeedWiring`/composition-root type (still app-side, but its own file) |
+| ~~G11~~ | ~~`FeedView.swift` is 674 lines / holds the closure-wiring~~ — **repaid.** Wiring extracted to `FeedWiring`; FeedView down to ~515 lines. | `FeedWiring.swift` | Done (#108) |
 | G12 | `FeedWindowConfigurator` polls `asyncAfter(0.05)` until the window exists to force tab grouping | `ConfluenceApp.swift` | If Apple ships SwiftUI tabbing control; until then it's contained |
 | ~~G13~~ | ~~`EphemeralSecureStore` is `@unchecked Sendable`~~ — **repaid.** Now `Synchronization.Mutex`, checked-Sendable (macOS 26 floor). | `Keychain.swift` | Done (#110) |
 
@@ -37,7 +37,6 @@ authoritative in-place markers), the SPEC, and open bug issues. When you add a
 
 | Issue | Summary |
 |---|---|
-| [#100](https://github.com/DanGahan/confluence/issues/100) | Mastodon post links open Safari instead of the in-app thread (routing gap — we intercept bsky.app profile links but not Mastodon status URLs) |
-| [#102](https://github.com/DanGahan/confluence/issues/102) | Beachball viewing a Bluesky thread — suspected main-thread blocking; unreproduced, needs capture |
-| [#94](https://github.com/DanGahan/confluence/issues/94) | Main window doesn't come to foreground on launch |
-| [#93](https://github.com/DanGahan/confluence/issues/93) | Closing a tab clicks through to a link behind the tab bar (same hit-testing family as #69 — see PROJECT.md "Rich text") |
+| [#102](https://github.com/DanGahan/confluence/issues/102) | Beachball viewing a Bluesky thread — suspected main-thread blocking; unreproduced. Diagnostics landed (breadcrumbs on the thread-open path); blocked on a repro to pin the cause. |
+
+(#93, #94, #100 fixed and merged.)

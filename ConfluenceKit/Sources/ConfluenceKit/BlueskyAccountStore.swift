@@ -44,4 +44,22 @@ public final class BlueskyAccountStore {
         try keychain.deleteAll()
         session = nil
     }
+
+    /// Runs `body` with the current session; if the access token has expired
+    /// (`BlueskyError.invalidCredentials`), refreshes once and retries. Centralises the
+    /// refresh-retry that every authenticated Bluesky call in the app otherwise repeats.
+    /// `nonisolated` so `body` (the network call) runs off the main actor as before; only the
+    /// session read and refresh hop to the main actor.
+    public nonisolated func withFreshSession<T: Sendable>(
+        _ body: @Sendable (BlueskySession) async throws -> T
+    ) async throws -> T {
+        guard let session = await session else { throw BlueskyError.invalidCredentials }
+        do {
+            return try await body(session)
+        } catch BlueskyError.invalidCredentials {
+            try await refresh()
+            guard let fresh = await self.session else { throw BlueskyError.invalidCredentials }
+            return try await body(fresh)
+        }
+    }
 }
