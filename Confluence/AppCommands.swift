@@ -7,6 +7,8 @@ extension FocusedValues {
     @Entry var scrollFeedToTop: (() -> Void)?
     @Entry var newPost: (() -> Void)?
     @Entry var openSearch: (() -> Void)?
+    @Entry var openOwnFeed: ((OwnFeedScope) -> Void)?
+    @Entry var availableOwnScopes: Set<OwnFeedScope>?
 }
 
 /// Standard menu-bar commands. Edit/Window/Help come from SwiftUI automatically.
@@ -15,8 +17,16 @@ struct AppCommands: Commands {
     @FocusedValue(\.scrollFeedToTop) private var scrollFeedToTop
     @FocusedValue(\.newPost) private var newPost
     @FocusedValue(\.openSearch) private var openSearch
+    @FocusedValue(\.openOwnFeed) private var openOwnFeed
+    @FocusedValue(\.availableOwnScopes) private var availableOwnScopes
 
     var body: some Commands {
+        CommandMenu("My Posts") {
+            ForEach(OwnFeedScope.allCases) { scope in
+                Button(scope.title) { openOwnFeed?(scope) }
+                    .disabled(openOwnFeed == nil || !(availableOwnScopes?.contains(scope) ?? false))
+            }
+        }
         CommandGroup(replacing: .newItem) {
             Button("New Post") { newPost?() }
                 .keyboardShortcut("n")

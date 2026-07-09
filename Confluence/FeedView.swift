@@ -32,6 +32,7 @@ struct FeedView: View {
     @State private var showingSearch = false
     @State private var showingComposer = false
     @State private var networkFilter: FeedFilter = .both
+    @State private var ownFeedScope: OwnFeedScope?
     @State private var topID: String?
     @State private var didRestore = false
     @State private var saveTask: Task<Void, Never>?
@@ -185,6 +186,9 @@ struct FeedView: View {
         .focusedSceneValue(\.scrollFeedToTop, scrollToTop)
         .focusedSceneValue(\.newPost) { showingComposer = true }
         .focusedSceneValue(\.openSearch) { showingSearch = true }
+        .focusedSceneValue(\.openOwnFeed) { ownFeedScope = $0 }
+        .focusedSceneValue(\.availableOwnScopes, OwnFeedScope.available(bluesky: bluesky.isLoggedIn, mastodon: mastodon.isLoggedIn))
+        .sheet(item: $ownFeedScope) { OwnFeedView(scope: $0) }
         .overlay(alignment: .bottom) { followToast }
         .overlay(alignment: .bottomTrailing) { composeButton }
         .toolbar { feedToolbar }
