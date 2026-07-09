@@ -53,28 +53,15 @@ struct ConfluenceApp: App {
 /// content window front at launch, and reopen one on Dock click when none is visible (#126).
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    // Bring the app to the front at launch, and reopen a window on Dock click when none is
+    // visible. The window itself now appears reliably because session restore no longer blocks
+    // init (#126) — see BlueskyAccountStore.restore and ContentView.
     func applicationDidFinishLaunching(_ notification: Notification) {
-        showMainWindow()
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        if !flag { showMainWindow() }
-        return true // let AppKit create/show a window if we didn't
-    }
-
-    /// The WindowGroup's window may not exist the instant we launch; retry briefly until it does,
-    /// then order it front and activate. Ignores the invisible helper/Settings windows.
-    private func showMainWindow(attempt: Int = 0) {
-        if let window = NSApp.windows.first(where: { $0.canBecomeMain && !$0.isMiniaturized && $0.isVisible })
-            ?? NSApp.windows.first(where: { $0.canBecomeMain }) {
-            window.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
-        } else if attempt < 20 {
-            Task { @MainActor in
-                try? await Task.sleep(for: .milliseconds(50))
-                showMainWindow(attempt: attempt + 1)
-            }
-        }
+        true
     }
 }
 
