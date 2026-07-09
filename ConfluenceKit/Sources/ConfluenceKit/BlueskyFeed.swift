@@ -152,6 +152,7 @@ extension BlueskyClient {
                 text: record.text,
                 attributedText: FeedEntry.attributed(from: record),
                 imageURLs: embed?.allImages?.compactMap { URL(string: $0.fullsize) } ?? [],
+                videos: embed?.anyVideo?.postVideo.map { [$0] } ?? [],
                 linkCard: (embed?.allImages?.isEmpty ?? true) ? embed?.anyExternal?.linkCard : nil,
                 repostedBy: repostedBy,
                 isFollowing: author.viewer?.following != nil,
@@ -217,14 +218,34 @@ extension BlueskyClient {
     private struct Embed: Decodable {
         let images: [EmbedImage]?
         let external: ExternalEmbed?
-        let media: EmbedMedia?  // recordWithMedia#view nests images/external under `media`
+        let playlist: String?      // app.bsky.embed.video#view — HLS playlist URL
+        let thumbnail: String?     // video poster frame
+        let media: EmbedMedia?     // recordWithMedia#view nests media under `media`
 
         var allImages: [EmbedImage]? { images ?? media?.images }
         var anyExternal: ExternalEmbed? { external ?? media?.external }
+        var anyVideo: EmbedVideo? {
+            if let playlist { return EmbedVideo(playlist: playlist, thumbnail: thumbnail) }
+            return media?.video
+        }
     }
     private struct EmbedMedia: Decodable {
         let images: [EmbedImage]?
         let external: ExternalEmbed?
+        let playlist: String?
+        let thumbnail: String?
+
+        var video: EmbedVideo? {
+            playlist.map { EmbedVideo(playlist: $0, thumbnail: thumbnail) }
+        }
+    }
+    private struct EmbedVideo {
+        let playlist: String
+        let thumbnail: String?
+
+        var postVideo: PostVideo? {
+            URL(string: playlist).map { PostVideo(url: $0, thumbnailURL: thumbnail.flatMap { URL(string: $0) }) }
+        }
     }
     private struct EmbedImage: Decodable {
         let fullsize: String

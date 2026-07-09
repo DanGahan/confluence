@@ -117,6 +117,9 @@ private struct ThreadPostRow: View {
                         }
                     }
                 }
+                ForEach(post.videos) { video in
+                    PostVideoView(video: video)
+                }
                 if let card = post.linkCard {
                     LinkCardView(card: card)
                 }

@@ -15,6 +15,20 @@ public struct LinkCard: Sendable, Equatable {
     }
 }
 
+/// A video/GIF attached to a post: a playable URL (Bluesky HLS playlist or Mastodon mp4)
+/// and an optional poster frame to show before playback.
+public struct PostVideo: Sendable, Equatable, Identifiable {
+    public let url: URL
+    public let thumbnailURL: URL?
+
+    public init(url: URL, thumbnailURL: URL?) {
+        self.url = url
+        self.thumbnailURL = thumbnailURL
+    }
+
+    public var id: String { url.absoluteString }
+}
+
 /// A single post in the combined feed, normalized across networks.
 public struct FeedItem: Identifiable, Sendable, Equatable {
     public let network: Network
@@ -29,6 +43,8 @@ public struct FeedItem: Identifiable, Sendable, Equatable {
     /// Rich version of `text` with `.link` runs for URLs and @-mentions. Defaults to plain text.
     public let attributedText: AttributedString
     public let imageURLs: [URL]
+    /// Videos/GIFs attached to the post (Bluesky video embed, Mastodon video/gifv).
+    public let videos: [PostVideo]
     /// A shared-link preview card, when the post embeds one and has no images.
     public let linkCard: LinkCard?
     /// Display name of the reposter/booster, if this appeared via a repost/boost.
@@ -57,7 +73,7 @@ public struct FeedItem: Identifiable, Sendable, Equatable {
 
     public init(network: Network, rawId: String, authorID: String = "", authorName: String, authorHandle: String,
                 avatarURL: URL?, createdAt: Date, text: String, attributedText: AttributedString? = nil,
-                imageURLs: [URL] = [], linkCard: LinkCard? = nil, repostedBy: String? = nil,
+                imageURLs: [URL] = [], videos: [PostVideo] = [], linkCard: LinkCard? = nil, repostedBy: String? = nil,
                 isFollowing: Bool = false, followURI: String? = nil,
                 threadID: String? = nil, replyCount: Int = 0, isReply: Bool = false,
                 cid: String? = nil, postURL: URL? = nil) {
@@ -71,6 +87,7 @@ public struct FeedItem: Identifiable, Sendable, Equatable {
         self.text = text
         self.attributedText = attributedText ?? AttributedString(text)
         self.imageURLs = imageURLs
+        self.videos = videos
         self.linkCard = linkCard
         self.repostedBy = repostedBy
         self.isFollowing = isFollowing

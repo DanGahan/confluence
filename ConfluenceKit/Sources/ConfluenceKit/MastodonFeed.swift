@@ -165,6 +165,7 @@ extension MastodonClient {
                 text: htmlToPlainText(content),
                 attributedText: autolinked(mastodonRichText(html: content, mentions: mentionLinks)),
                 imageURLs: mediaAttachments.filter { $0.type == "image" }.compactMap { URL(string: $0.url) },
+                videos: mediaAttachments.compactMap(\.postVideo),
                 repostedBy: boostedBy,
                 threadID: id, // the original status id (for a boost this is the reblog's id)
                 replyCount: repliesCount ?? 0,
@@ -187,6 +188,14 @@ extension MastodonClient {
     private struct Media: Decodable {
         let type: String
         let url: String
+        let previewUrl: String?
+        enum CodingKeys: String, CodingKey { case type, url; case previewUrl = "preview_url" }
+
+        /// A playable video/gifv attachment, if this is one and the URL parses.
+        var postVideo: PostVideo? {
+            guard type == "video" || type == "gifv", let playURL = URL(string: url) else { return nil }
+            return PostVideo(url: playURL, thumbnailURL: previewUrl.flatMap { URL(string: $0) })
+        }
     }
     private struct Mention: Decodable {
         let id: String
