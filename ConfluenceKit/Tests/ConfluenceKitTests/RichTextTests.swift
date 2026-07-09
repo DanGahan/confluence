@@ -25,6 +25,20 @@ struct RichTextTests {
         #expect(ProfileLink.blueskyWebProfileHandle(URL(string: "https://example.com/profile/x")!) == nil)
     }
 
+    @Test func mastodonStatusURLRecognition() {
+        // Modern web permalink: /@user/{numeric id}, local and remote handles.
+        #expect(ProfileLink.looksLikeMastodonStatus(URL(string: "https://mastodon.macstories.net/@appstories/116872581526086363")!))
+        #expect(ProfileLink.looksLikeMastodonStatus(URL(string: "https://mastodon.social/@alice@other.tld/109876543210")!))
+        // ActivityPub / older forms ending in /statuses/{id}.
+        #expect(ProfileLink.looksLikeMastodonStatus(URL(string: "https://mastodon.social/users/alice/statuses/12345")!))
+        #expect(ProfileLink.looksLikeMastodonStatus(URL(string: "https://mastodon.social/@alice/statuses/12345")!))
+        // Not statuses: a bare profile, a Bluesky post (base32 rkey, not digits), non-https, a mention link.
+        #expect(!ProfileLink.looksLikeMastodonStatus(URL(string: "https://mastodon.social/@alice")!))
+        #expect(!ProfileLink.looksLikeMastodonStatus(URL(string: "https://bsky.app/profile/alice/post/3mpzigv5cx22v")!))
+        #expect(!ProfileLink.looksLikeMastodonStatus(URL(string: "http://mastodon.social/@alice/123")!))
+        #expect(!ProfileLink.looksLikeMastodonStatus(URL(string: "https://example.com/2024/01/12345")!))
+    }
+
     // MARK: Bluesky facets (UTF-8 byte ranges)
 
     @Test func blueskyLinkAndMentionFacets() {

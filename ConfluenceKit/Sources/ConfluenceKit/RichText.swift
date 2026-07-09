@@ -33,6 +33,19 @@ public enum ProfileLink {
         guard parts.count == 2, parts[0] == "profile", !parts[1].isEmpty else { return nil }
         return parts[1]
     }
+
+    /// True if `url` looks like a Mastodon status permalink (`…/@user/{id}` or
+    /// `…/statuses/{id}`, id all-digits), so it can be resolved onto the user's instance and
+    /// opened as an in-app thread instead of the browser. Matches on path shape only — the
+    /// resolve step (a search) confirms the status actually exists, so a false positive here
+    /// just costs one lookup that falls back to opening the link normally.
+    public static func looksLikeMastodonStatus(_ url: URL) -> Bool {
+        guard url.scheme == "https" else { return false }
+        let parts = url.pathComponents.filter { $0 != "/" }
+        guard parts.count >= 2, let last = parts.last, !last.isEmpty, last.allSatisfy(\.isNumber) else { return false }
+        let prev = parts[parts.count - 2]
+        return prev.hasPrefix("@") || prev == "statuses"
+    }
 }
 
 /// A run of text with an optional link. Assembled into an AttributedString whose `.link`

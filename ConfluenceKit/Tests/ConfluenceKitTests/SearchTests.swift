@@ -62,6 +62,29 @@ struct SearchDecodingTests {
         let results = await client.search(host: "mastodon.social", accessToken: "t", query: "x")
         #expect(results.failed == true)
     }
+
+    // Resolving a tapped Mastodon status permalink (#100): searching the URL with resolve=true
+    // returns the status as the first post, whose threadID is the LOCAL id on the user's
+    // instance (42) — not the origin instance's id in the URL — which ThreadView loads from.
+    @Test func mastodonResolvesStatusURLToLocalThreadID() async throws {
+        let statusURL = "https://mastodon.macstories.net/@appstories/116872581526086363"
+        let client = MastodonClient(session: MockURLProtocol.session { request in
+            let q = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems ?? []
+            #expect(q.contains { $0.name == "q" && $0.value == statusURL })
+            #expect(q.contains { $0.name == "resolve" && $0.value == "true" })
+            let json = """
+            {"accounts":[],"statuses":[{"id":"42","created_at":"2026-07-01T09:00:00.000Z",
+             "content":"<p>remote toot</p>",
+             "account":{"id":"7","display_name":"App Stories","acct":"appstories@mastodon.macstories.net","avatar":"https://a","note":""},
+             "media_attachments":[]}],"hashtags":[]}
+            """
+            return (request.status(200), json.data(using: .utf8)!)
+        })
+        let results = await client.search(host: "mastodon.social", accessToken: "t", query: statusURL)
+        let post = try #require(results.posts.first)
+        #expect(post.threadID == "42")
+        #expect(post.network == .mastodon)
+    }
 }
 
 @MainActor
