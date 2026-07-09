@@ -567,19 +567,8 @@ struct FeedRow: View {
                     RichTextLabel(attributed: item.attributedText, openURL: openURL, fontName: fontName, fontSize: fontSize, linkColorHex: linkColorHex)
                 }
                 if !item.imageURLs.isEmpty {
-                    // Non-scrolling row — a nested horizontal ScrollView steals the List's
-                    // vertical scroll gesture on macOS. Both networks cap posts at 4 images.
-                    HStack(spacing: 6) {
-                        let images = Array(item.imageURLs.prefix(4))
-                        ForEach(Array(images.enumerated()), id: \.element) { i, url in
-                            Button { lightbox = LightboxItem(urls: images, start: i) } label: {
-                                RemoteImage(url) { Color.secondary.opacity(0.15) }
-                                    .frame(maxWidth: .infinity)
-                                    .frame(height: 140)
-                                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                            }
-                            .buttonStyle(.plain)
-                        }
+                    PostImages(urls: item.imageURLs, letterboxHeight: 140) { start, images in
+                        lightbox = LightboxItem(urls: images, start: start)
                     }
                 }
                 ForEach(item.videos) { video in

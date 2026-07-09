@@ -138,16 +138,8 @@ private struct ProfilePostRow: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             if !post.imageURLs.isEmpty {
-                HStack(spacing: 6) {
-                    let images = Array(post.imageURLs.prefix(4))
-                    ForEach(Array(images.enumerated()), id: \.element) { i, url in
-                        Button { lightbox = LightboxItem(urls: images, start: i) } label: {
-                            RemoteImage(url) { Color.secondary.opacity(0.15) }
-                                .frame(maxWidth: .infinity).frame(height: 120)
-                                .clipShape(RoundedRectangle(cornerRadius: 8))
-                        }
-                        .buttonStyle(.plain)
-                    }
+                PostImages(urls: post.imageURLs, letterboxHeight: 120) { start, images in
+                    lightbox = LightboxItem(urls: images, start: start)
                 }
             }
             ForEach(post.videos) { video in

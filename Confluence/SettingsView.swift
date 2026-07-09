@@ -8,6 +8,8 @@ struct SettingsView: View {
                 .tabItem { Label("Accounts", systemImage: "person.2") }
             AppearanceSettings()
                 .tabItem { Label("Fonts & Colors", systemImage: "textformat") }
+            MediaSettings()
+                .tabItem { Label("Media Preview", systemImage: "photo") }
         }
         .frame(width: 480, height: 380)
     }
@@ -71,6 +73,26 @@ private struct AccountsSettings: View {
         if let session = mastodon.session {
             mastodonProfile = try? await MastodonClient().currentAccount(host: session.host, accessToken: session.accessToken)
         }
+    }
+}
+
+// MARK: - Media Preview
+
+private struct MediaSettings: View {
+    @AppStorage(MediaPreference.fullSizeKey) private var fullSizeMedia = MediaPreference.fullSizeDefault
+
+    var body: some View {
+        Form {
+            Section("Images") {
+                Toggle("Display Full Size media", isOn: $fullSizeMedia)
+                Text(fullSizeMedia
+                     ? "Images show in full at their natural shape (portrait, landscape, or square), scaled to the window."
+                     : "Images show in a fixed letterbox. Turn on to see the whole image regardless of orientation.")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .formStyle(.grouped)
     }
 }
 

@@ -125,13 +125,7 @@ private struct ThreadPostRow: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 if !post.imageURLs.isEmpty {
-                    HStack(spacing: 6) {
-                        ForEach(post.imageURLs.prefix(4), id: \.self) { url in
-                            RemoteImage(url) { Color.secondary.opacity(0.15) }
-                                .frame(maxWidth: .infinity).frame(height: 120)
-                                .clipShape(RoundedRectangle(cornerRadius: 8))
-                        }
-                    }
+                    PostImages(urls: post.imageURLs, letterboxHeight: 120)
                 }
                 ForEach(post.videos) { video in
                     PostVideoView(video: video)

@@ -60,17 +60,31 @@ private let imageLog = Logger(subsystem: "com.dangahan.confluence", category: "i
 /// scrolls off and doesn't reliably retry. Cache hits render with no placeholder flash.
 struct RemoteImage<Placeholder: View>: View {
     let url: URL?
+    private let contentMode: ContentMode
     private let placeholder: Placeholder
     @State private var image: NSImage?
 
-    init(_ url: URL?, @ViewBuilder placeholder: () -> Placeholder) {
+    /// `.fill` (default) crops to the caller's frame; `.fit` shows the whole image at its
+    /// natural aspect ratio (used by full-size media, #99).
+    init(_ url: URL?, contentMode: ContentMode = .fill, @ViewBuilder placeholder: () -> Placeholder) {
         self.url = url
+        self.contentMode = contentMode
         self.placeholder = placeholder()
     }
 
     var body: some View {
-        Group {
-            if let image {
+        content
+            .contentShape(Rectangle()) // hit area = exactly this view's frame
+            .task(id: url) { await load() }
+    }
+
+    @ViewBuilder private var content: some View {
+        if let image {
+            if contentMode == .fit {
+                // Whole image, natural aspect ratio; caller caps the height. scaledToFit never
+                // overflows its frame, so the #69 hit-test spill doesn't apply here.
+                Image(nsImage: image).resizable().aspectRatio(contentMode: .fit)
+            } else {
                 // Contain the scaledToFill overflow: a bare Image renders (and hit-tests!)
                 // beyond its frame — .clipShape hides the spill visually but the invisible
                 // overflow still swallows clicks on whatever sits above/below (e.g. a link
@@ -78,12 +92,12 @@ struct RemoteImage<Placeholder: View>: View {
                 Color.clear
                     .overlay(Image(nsImage: image).resizable().scaledToFill())
                     .clipped()
-            } else {
-                placeholder
             }
+        } else if contentMode == .fit {
+            placeholder.aspectRatio(3.0 / 2.0, contentMode: .fit) // reserve rough space pre-load
+        } else {
+            placeholder
         }
-        .contentShape(Rectangle()) // hit area = exactly this view's frame
-        .task(id: url) { await load() }
     }
 
     private func load() async {

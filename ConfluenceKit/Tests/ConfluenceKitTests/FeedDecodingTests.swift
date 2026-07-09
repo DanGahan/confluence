@@ -258,4 +258,40 @@ struct FeedDecodingTests {
         let gif = try #require(page.items.first { $0.authorName == "Gina" })
         #expect(gif.videos.map(\.url.absoluteString) == ["https://m/loop.mp4"])
     }
+
+    @Test func decodesMastodonLinkCard() async throws {
+        // A post with a `card` (Open Graph preview) and no media → shows a link card (#98).
+        // A post with media attached suppresses the card (mirrors the Bluesky rule).
+        let json = """
+        [
+          {
+            "id": "301", "created_at": "2026-07-01T09:00:00.000Z", "content": "<p>read this</p>",
+            "account": {"id": "1", "display_name": "Cal", "acct": "cal", "avatar": "https://m/c.png"},
+            "media_attachments": [],
+            "card": {"url": "https://ex.com/story", "title": "A Story", "description": "the gist",
+                     "image": "https://ex.com/og.jpg", "type": "link"}
+          },
+          {
+            "id": "302", "created_at": "2026-07-01T08:00:00.000Z", "content": "<p>pic + link</p>",
+            "account": {"id": "2", "display_name": "Dot", "acct": "dot", "avatar": "https://m/d.png"},
+            "media_attachments": [{"type": "image", "url": "https://m/pic.jpg"}],
+            "card": {"url": "https://ex.com/other", "title": "Other", "description": "", "image": null, "type": "link"}
+          }
+        ]
+        """.data(using: .utf8)!
+        let client = MastodonClient(session: MockURLProtocol.session { ($0.status(200), json) })
+        let page = try await client.homeTimeline(host: "mastodon.social", accessToken: "t", maxId: nil)
+
+        let carded = try #require(page.items.first { $0.authorName == "Cal" })
+        let card = try #require(carded.linkCard)
+        #expect(card.url.absoluteString == "https://ex.com/story")
+        #expect(card.title == "A Story")
+        #expect(card.description == "the gist")
+        #expect(card.thumbURL?.absoluteString == "https://ex.com/og.jpg")
+
+        // Media present → card suppressed.
+        let withPic = try #require(page.items.first { $0.authorName == "Dot" })
+        #expect(withPic.linkCard == nil)
+        #expect(withPic.imageURLs.map(\.absoluteString) == ["https://m/pic.jpg"])
+    }
 }

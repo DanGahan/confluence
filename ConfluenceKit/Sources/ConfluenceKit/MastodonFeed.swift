@@ -122,9 +122,10 @@ extension MastodonClient {
         let repliesCount: Int?
         let inReplyToId: String?
         let url: String?
+        let card: Card?
 
         enum CodingKeys: String, CodingKey {
-            case id, content, account, mentions, reblog, url
+            case id, content, account, mentions, reblog, url, card
             case createdAt = "created_at"
             case mediaAttachments = "media_attachments"
             case repliesCount = "replies_count"
@@ -166,6 +167,9 @@ extension MastodonClient {
                 attributedText: autolinked(mastodonRichText(html: content, mentions: mentionLinks)),
                 imageURLs: mediaAttachments.filter { $0.type == "image" }.compactMap { URL(string: $0.url) },
                 videos: mediaAttachments.compactMap(\.postVideo),
+                // Show the link-preview card only when the post has no media of its own
+                // (mirrors the Bluesky rule that images/video win over a card).
+                linkCard: mediaAttachments.isEmpty ? card?.linkCard : nil,
                 repostedBy: boostedBy,
                 threadID: id, // the original status id (for a boost this is the reblog's id)
                 replyCount: repliesCount ?? 0,
@@ -201,6 +205,19 @@ extension MastodonClient {
         let id: String
         let url: String   // the account's profile URL, matches the <a href> in content
         let acct: String
+    }
+    /// A status's link-preview card (`/api/v1/statuses` `card`, Open Graph-derived).
+    private struct Card: Decodable {
+        let url: String
+        let title: String
+        let description: String
+        let image: String?
+
+        var linkCard: LinkCard? {
+            guard let link = URL(string: url) else { return nil }
+            return LinkCard(url: link, title: title.isEmpty ? url : title, description: description,
+                            thumbURL: image.flatMap { URL(string: $0) })
+        }
     }
 }
 
