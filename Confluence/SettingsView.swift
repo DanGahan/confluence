@@ -79,7 +79,7 @@ private struct AccountsSettings: View {
 // MARK: - Media Preview
 
 private struct MediaSettings: View {
-    @AppStorage(MediaPreference.fullSizeKey) private var fullSizeMedia = false
+    @AppStorage(MediaPreference.fullSizeKey) private var fullSizeMedia = MediaPreference.fullSizeDefault
 
     var body: some View {
         Form {

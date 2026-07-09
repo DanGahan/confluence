@@ -10,7 +10,7 @@ struct PostImages: View {
     /// Tapping an image opens the lightbox; nil = not tappable (e.g. thread view).
     var onTap: ((_ start: Int, _ images: [URL]) -> Void)? = nil
 
-    @AppStorage(MediaPreference.fullSizeKey) private var fullSize = false
+    @AppStorage(MediaPreference.fullSizeKey) private var fullSize = MediaPreference.fullSizeDefault
 
     var body: some View {
         let images = Array(urls.prefix(4))
