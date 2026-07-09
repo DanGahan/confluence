@@ -144,6 +144,15 @@ enum LinkClickRouter {
         installed = true
         NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown]) { event in
             guard let window = event.window else { return event }
+            // Clicks in window chrome (titlebar / tab bar / toolbar) must never reach post
+            // content drawn beneath it — otherwise closing a tab opens a link underneath (#93).
+            // contentLayoutRect excludes that chrome; a click outside it isn't a post click.
+            // Skip the check if the rect is degenerate so we never suppress real link clicks.
+            let contentRect = window.contentLayoutRect
+            if let content = window.contentView, !contentRect.isEmpty,
+               !contentRect.contains(content.convert(event.locationInWindow, from: nil)) {
+                return event
+            }
             for tv in views.allObjects {
                 guard tv.window === window, !tv.isHiddenOrHasHiddenAncestor,
                       !tv.visibleRect.isEmpty else { continue }
