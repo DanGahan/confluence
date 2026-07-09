@@ -20,7 +20,12 @@ public final class BlueskyAccountStore {
     ) {
         self.client = client
         self.keychain = keychain
-        // Restore a persisted session, if any. A corrupt item is treated as logged-out.
+    }
+
+    /// Restores a persisted session (if any) from the Keychain. Call after the UI is up — not
+    /// from `init` — because reading the Keychain synchronously at launch blocks on the access
+    /// prompt and stops the window from ever appearing (#126). Corrupt/absent item = logged-out.
+    public func restore() {
         session = try? keychain.value(BlueskySession.self, for: Self.account)
     }
 

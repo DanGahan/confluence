@@ -29,6 +29,12 @@ public final class MastodonAccountStore {
         self.client = client
         self.authenticator = authenticator
         self.keychain = keychain
+    }
+
+    /// Restores a persisted session (if any) from the Keychain. Call after the UI is up — not
+    /// from `init` — because reading the Keychain synchronously at launch blocks on the access
+    /// prompt and stops the window from ever appearing (#126). Corrupt/absent item = logged-out.
+    public func restore() {
         session = try? keychain.value(MastodonSession.self, for: Self.account)
     }
 
