@@ -15,6 +15,12 @@ time — no algorithm deciding what you see, no switching between apps or tabs.
 Each post carries a subtle badge so you always know where it came from. One
 network having a bad day? The other keeps flowing.
 
+**📡 Live mode.** Flip on live mode and the feed becomes a real-time ticker —
+it pins to the top and streams new posts in as they land, refreshing every few
+seconds while you're watching. It's considerate: polling pauses when the window
+isn't frontmost and resumes the moment you come back. Flip it off to read at
+your own pace.
+
 **🖥 Genuinely native.** Built with Swift and SwiftUI for macOS Tahoe. Liquid
 Glass materials, Dark Mode, your accent colour, the menu bar and keyboard
 shortcuts you expect (⌘N to post, ⌘R to refresh, ⌘T for a new tab, ⌘F to
@@ -27,9 +33,12 @@ limit, image attachments, drafts you can save and pick up later, and honest
 per-network error handling: if one side fails, retry just that one. Never a
 double post.
 
-**📸 Rich media, inline.** Photos open in a lightbox. Videos and GIFs play
-right in the feed — Bluesky clips and Mastodon videos alike — with a tap on
-the poster frame. Link previews render as tidy cards.
+**📸 Rich media, inline.** Photos preview at their natural shape — portrait,
+landscape, or square, the whole image, scaled to your window (or switch to a
+compact letterbox in settings). Open any photo in the lightbox to zoom and pan.
+Videos and GIFs play right in the feed — Bluesky clips and Mastodon videos
+alike — with a tap on the poster frame. Link previews render as tidy cards on
+both networks.
 
 **💬 Follow the conversation.** Click any post to open its thread. Tap an
 @-mention or an author to see their profile, and follow or unfollow on either
