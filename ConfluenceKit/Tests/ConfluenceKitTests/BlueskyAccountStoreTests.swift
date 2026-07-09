@@ -88,5 +88,44 @@ struct BlueskyAccountStoreTests {
         let persisted = try keychain.value(BlueskySession.self, for: "session")
         #expect(persisted?.refreshJwt == "new-ref")
     }
+
+    /// G4: on an expired token, withFreshSession refreshes once and retries body with the new
+    /// token; the happy path runs body once with no refresh.
+    @Test func withFreshSessionRefreshesOnceAndRetries() async throws {
+        let keychain = InMemorySecureStore()
+        try keychain.set(okSessionJSON(access: "old"), for: "session")
+        let sut = store(keychain) { ($0.ok(), self.okSessionJSON(access: "new", refresh: "new-ref")) }
+
+        final class Box: @unchecked Sendable { var calls = 0; var seen: [String] = [] }
+        let box = Box()
+        let result: String = try await sut.withFreshSession { session in
+            box.calls += 1
+            box.seen.append(session.accessJwt)
+            if box.calls == 1 { throw BlueskyError.invalidCredentials } // simulate expiry
+            return "ok:\(session.accessJwt)"
+        }
+        #expect(result == "ok:new")
+        #expect(box.seen == ["old", "new"]) // retried with the refreshed token
+        #expect(sut.session?.accessJwt == "new")
+    }
+
+    @Test func withFreshSessionRunsBodyOnceOnSuccess() async throws {
+        let keychain = InMemorySecureStore()
+        try keychain.set(okSessionJSON(access: "tok"), for: "session")
+        let sut = store(keychain) { ($0.ok(), self.okSessionJSON()) }
+
+        final class Box: @unchecked Sendable { var calls = 0 }
+        let box = Box()
+        let out: Int = try await sut.withFreshSession { _ in box.calls += 1; return 7 }
+        #expect(out == 7)
+        #expect(box.calls == 1) // no refresh, no retry
+    }
+
+    @Test func withFreshSessionThrowsWhenLoggedOut() async {
+        let sut = store(InMemorySecureStore()) { ($0.ok(), Data()) }
+        await #expect(throws: BlueskyError.invalidCredentials) {
+            try await sut.withFreshSession { _ in 1 }
+        }
+    }
 }
 
