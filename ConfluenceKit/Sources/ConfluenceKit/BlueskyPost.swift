@@ -20,16 +20,21 @@ extension BlueskyClient {
         return try JSONSerialization.data(withJSONObject: blob)
     }
 
-    /// Creates an `app.bsky.feed.post` record, optionally with image blobs. Returns the post URI.
-    public func post(accessToken: String, repoDID: String, text: String, imageBlobs: [Data] = []) async throws -> String {
+    /// Creates an `app.bsky.feed.post` record, optionally with image blobs and per-image alt-text.
+    /// `images` pairs each uploaded blob (returned by `uploadImage`) with its alt description
+    /// (empty string is allowed and posts as no description).
+    public func post(accessToken: String, repoDID: String, text: String,
+                     images: [(blob: Data, alt: String)] = []) async throws -> String {
         var record: [String: Any] = [
             "$type": "app.bsky.feed.post",
             "text": text,
             "createdAt": ISO8601DateFormatter().string(from: Date()),
         ]
-        if !imageBlobs.isEmpty {
-            let images = try imageBlobs.map { ["alt": "", "image": try JSONSerialization.jsonObject(with: $0)] }
-            record["embed"] = ["$type": "app.bsky.embed.images", "images": images]
+        if !images.isEmpty {
+            let embeds = try images.map { image in
+                ["alt": image.alt, "image": try JSONSerialization.jsonObject(with: image.blob)]
+            }
+            record["embed"] = ["$type": "app.bsky.embed.images", "images": embeds]
         }
 
         var request = URLRequest(url: pdsURL.appending(path: "xrpc/com.atproto.repo.createRecord"))

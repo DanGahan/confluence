@@ -162,11 +162,12 @@ struct FeedWiring {
             let store = bluesky, client = BlueskyClient()
             posters[.bluesky] = { text, images in
                 try await store.withFreshSession { s in
-                    var blobs: [Data] = []
-                    for data in images {
-                        blobs.append(try await client.uploadImage(accessToken: s.accessJwt, data: data, mimeType: "image/jpeg"))
+                    var uploaded: [(blob: Data, alt: String)] = []
+                    for attachment in images {
+                        let blob = try await client.uploadImage(accessToken: s.accessJwt, data: attachment.data, mimeType: "image/jpeg")
+                        uploaded.append((blob: blob, alt: attachment.alt))
                     }
-                    _ = try await client.post(accessToken: s.accessJwt, repoDID: s.did, text: text, imageBlobs: blobs)
+                    _ = try await client.post(accessToken: s.accessJwt, repoDID: s.did, text: text, images: uploaded)
                 }
             }
             limits[.bluesky] = 300
@@ -175,9 +176,10 @@ struct FeedWiring {
             let client = MastodonClient()
             posters[.mastodon] = { text, images in
                 var mediaIDs: [String] = []
-                for (i, data) in images.enumerated() {
+                for (i, attachment) in images.enumerated() {
                     mediaIDs.append(try await client.uploadImage(host: session.host, accessToken: session.accessToken,
-                                                                 data: data, filename: "image\(i).jpg", mimeType: "image/jpeg"))
+                                                                 data: attachment.data, filename: "image\(i).jpg",
+                                                                 mimeType: "image/jpeg", description: attachment.alt))
                 }
                 try await client.post(host: session.host, accessToken: session.accessToken, text: text, mediaIDs: mediaIDs)
             }

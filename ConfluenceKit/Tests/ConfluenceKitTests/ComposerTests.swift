@@ -45,15 +45,35 @@ struct PostClientTests {
             let images = embed["images"] as! [[String: Any]]
             #expect(images.count == 1)
             #expect(((images[0]["image"] as! [String: Any])["$type"] as? String) == "blob")
+            #expect(images[0]["alt"] as? String == "")
             return (request.status(200), #"{"uri":"at://x"}"#.data(using: .utf8)!)
         })
-        _ = try await post.post(accessToken: "t", repoDID: "did:me", text: "pic", imageBlobs: [blob])
+        _ = try await post.post(accessToken: "t", repoDID: "did:me", text: "pic", images: [(blob: blob, alt: "")])
+    }
+
+    @Test func blueskyPostSendsAltTextOnEmbeddedImage() async throws {
+        let blob = Data(#"{"$type":"blob"}"#.utf8)
+        let post = BlueskyClient(session: MockURLProtocol.session { request in
+            let body = try JSONSerialization.jsonObject(with: MockURLProtocol.body(of: request)) as! [String: Any]
+            let record = body["record"] as! [String: Any]
+            let embed = record["embed"] as! [String: Any]
+            let images = embed["images"] as! [[String: Any]]
+            #expect(images.map { $0["alt"] as? String } == ["a cat sitting on a keyboard", "sunset over hills"])
+            return (request.status(200), #"{"uri":"at://x"}"#.data(using: .utf8)!)
+        })
+        _ = try await post.post(accessToken: "t", repoDID: "did:me", text: "two pics", images: [
+            (blob: blob, alt: "a cat sitting on a keyboard"),
+            (blob: blob, alt: "sunset over hills"),
+        ])
     }
 
     @Test func mastodonUploadImageAndPostWithMediaIDs() async throws {
         let upload = MastodonClient(session: MockURLProtocol.session { request in
             #expect(request.url?.path == "/api/v2/media")
             #expect(request.value(forHTTPHeaderField: "Content-Type")?.hasPrefix("multipart/form-data; boundary=") == true)
+            // Without a description, the multipart body should NOT contain a description part.
+            let body = String(data: MockURLProtocol.body(of: request), encoding: .utf8) ?? ""
+            #expect(body.contains(#"name="description""#) == false)
             return (request.status(200), #"{"id":"77"}"#.data(using: .utf8)!)
         })
         let id = try await upload.uploadImage(host: "m.social", accessToken: "t", data: Data([1]), filename: "a.jpg", mimeType: "image/jpeg")
@@ -65,6 +85,18 @@ struct PostClientTests {
             return (request.status(200), #"{"id":"1"}"#.data(using: .utf8)!)
         })
         try await post.post(host: "m.social", accessToken: "t", text: "pic", mediaIDs: [id])
+    }
+
+    @Test func mastodonUploadImageSendsDescriptionWhenProvided() async throws {
+        let upload = MastodonClient(session: MockURLProtocol.session { request in
+            let body = String(data: MockURLProtocol.body(of: request), encoding: .utf8) ?? ""
+            #expect(body.contains(#"name="description""#))
+            #expect(body.contains("a cat on a keyboard"))
+            return (request.status(200), #"{"id":"78"}"#.data(using: .utf8)!)
+        })
+        _ = try await upload.uploadImage(host: "m.social", accessToken: "t", data: Data([1]),
+                                         filename: "a.jpg", mimeType: "image/jpeg",
+                                         description: "a cat on a keyboard")
     }
 
     @Test func mastodonCharacterLimitReadsInstanceOrDefaults() async {
@@ -105,8 +137,24 @@ struct ComposerStoreTests {
         #expect(sut.canPost == false)        // over limit
         // An image with no text is postable.
         sut.text = ""
-        sut.attachments = [Data([1, 2, 3])]
+        sut.attachments = [Attachment(data: Data([1, 2, 3]))]
         #expect(sut.canPost == true)
+    }
+
+    @Test func posterReceivesAttachmentAltText() async {
+        let sut = store()
+        let capturedAlts = LockedStrings()
+        sut.configure(posters: [
+            .bluesky: { _, images in await capturedAlts.set(images.map(\.alt)) },
+        ], limits: [.bluesky: 300])
+        sut.postToBluesky = true; sut.postToMastodon = false
+        sut.text = "hi"
+        sut.attachments = [
+            Attachment(data: Data([1]), alt: "first"),
+            Attachment(data: Data([2]), alt: ""),
+        ]
+        await sut.post()
+        #expect(await capturedAlts.get() == ["first", ""])
     }
 
     @Test func partialFailureThenRetryDoesNotDoublePost() async {
@@ -142,4 +190,10 @@ struct ComposerStoreTests {
 actor Counter {
     private(set) var value = 0
     func increment() { value += 1 }
+}
+
+actor LockedStrings {
+    private var value: [String] = []
+    func set(_ new: [String]) { value = new }
+    func get() -> [String] { value }
 }

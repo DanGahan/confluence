@@ -20,7 +20,7 @@ authoritative in-place markers), the SPEC, and open bug issues. When you add a
 |---|---|---|---|
 | G5 | Mastodon HTML → text is a regex strip + common entities | `MastodonFeed.swift` (`htmlToPlainText`) | If posts render wrong entities/tags in the wild; swap for a real parser |
 | ~~G6~~ | ~~Image retry: linear backoff, no jitter/cap~~ — **repaid.** Now exponential backoff with jitter, capped at 2000ms. | `RemoteImage.swift` | Done |
-| G7 | Composer images: fixed 1600 px / 0.8 JPEG, no alt text, no HEIC | `ComposerView.swift` | Alt text is an accessibility gap — repay ahead of the others |
+| G7 | Composer images: fixed 1600 px / 0.8 JPEG, no HEIC | `ComposerView.swift` | Alt-text repaid (#122). HEIC still pending — swap when users complain about quality loss. |
 | G8 | Keychain falls back to legacy keychain on `errSecMissingEntitlement` (unsigned dev builds only) | `Keychain.swift` | Delete the fallback once builds are signed with a real team |
 | G9 | `LinkClickRouter` consumes mouse-down on link glyphs, so a drag-select can't *start* on a link | `RichTextLabel.swift` | Only if users report it; accepted trade for working links |
 | G10 | No offline cache — feed is refetched every launch; SwiftData cache is the named path | SPEC decision | Only if offline reading is requested |

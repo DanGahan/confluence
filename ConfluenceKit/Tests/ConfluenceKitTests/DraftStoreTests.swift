@@ -14,7 +14,8 @@ struct DraftStoreTests {
         let store = DraftStore(directory: dir)
         #expect(store.drafts.isEmpty)
 
-        let d = Draft(text: "hello", attachments: [Data([1, 2])], postToBluesky: true, postToMastodon: false)
+        let attachment = Attachment(data: Data([1, 2]), alt: "a description")
+        let d = Draft(text: "hello", attachments: [attachment], postToBluesky: true, postToMastodon: false)
         store.save(d)
         #expect(store.drafts.map(\.id) == [d.id])
 
@@ -24,14 +25,32 @@ struct DraftStoreTests {
         #expect(store.drafts.count == 1)
         #expect(store.drafts[0].text == "hello world")
 
-        // Persists to disk and reloads.
+        // Persists to disk and reloads — alt-text survives the round trip.
         let reopened = DraftStore(directory: dir)
         #expect(reopened.drafts.map(\.text) == ["hello world"])
-        #expect(reopened.drafts[0].attachments == [Data([1, 2])])
+        #expect(reopened.drafts[0].attachments.map(\.data) == [Data([1, 2])])
+        #expect(reopened.drafts[0].attachments.map(\.alt) == ["a description"])
 
         store.delete(d.id)
         #expect(store.drafts.isEmpty)
         #expect(DraftStore(directory: dir).drafts.isEmpty)
+    }
+
+    @Test func legacyDraftsWithRawDataAttachmentsUpgradeCleanly() throws {
+        let dir = tempDir()
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let file = dir.appendingPathComponent("drafts.json")
+        // Old shape: attachments encoded as [Data] rather than [Attachment].
+        let legacy = #"""
+        [{"id":"11111111-1111-1111-1111-111111111111","text":"legacy","attachments":["AQI="],"postToBluesky":true,"postToMastodon":false,"savedAt":123}]
+        """#
+        try legacy.data(using: .utf8)!.write(to: file)
+
+        let store = DraftStore(directory: dir)
+        #expect(store.drafts.count == 1)
+        #expect(store.drafts[0].text == "legacy")
+        #expect(store.drafts[0].attachments.map(\.data) == [Data([1, 2])])
+        #expect(store.drafts[0].attachments.map(\.alt) == [""]) // no alt was stored
     }
 
     @Test func mostRecentFirst() {
@@ -45,7 +64,8 @@ struct DraftStoreTests {
     }
 
     @Test func previewFallsBackToImageCount() {
-        let empty = Draft(text: "  ", attachments: [Data([1]), Data([2])], postToBluesky: true, postToMastodon: false)
+        let empty = Draft(text: "  ", attachments: [Attachment(data: Data([1])), Attachment(data: Data([2]))],
+                          postToBluesky: true, postToMastodon: false)
         #expect(empty.preview == "2 images")
         let text = Draft(text: "first line\nsecond", attachments: [], postToBluesky: true, postToMastodon: false)
         #expect(text.preview == "first line")

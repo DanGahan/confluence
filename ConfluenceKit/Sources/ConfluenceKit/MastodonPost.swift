@@ -27,8 +27,10 @@ extension MastodonClient {
         }
     }
 
-    /// `POST /api/v2/media` (multipart) — uploads an image. Returns the media id for `media_ids`.
-    public func uploadImage(host: String, accessToken: String, data: Data, filename: String, mimeType: String) async throws -> String {
+    /// `POST /api/v2/media` (multipart) — uploads an image with an optional alt-text
+    /// description. Returns the media id for `media_ids`.
+    public func uploadImage(host: String, accessToken: String, data: Data,
+                            filename: String, mimeType: String, description: String = "") async throws -> String {
         var components = URLComponents()
         components.scheme = "https"
         components.host = host
@@ -45,7 +47,16 @@ extension MastodonClient {
         body.append("Content-Disposition: form-data; name=\"file\"; filename=\"\(filename)\"\r\n".data(using: .utf8)!)
         body.append("Content-Type: \(mimeType)\r\n\r\n".data(using: .utf8)!)
         body.append(data)
-        body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
+        body.append("\r\n".data(using: .utf8)!)
+        // Empty description would still be sent as an empty field — send it only when set,
+        // matching Mastodon's convention that omitting `description` leaves the media unlabelled.
+        if !description.isEmpty {
+            body.append("--\(boundary)\r\n".data(using: .utf8)!)
+            body.append("Content-Disposition: form-data; name=\"description\"\r\n\r\n".data(using: .utf8)!)
+            body.append(description.data(using: .utf8) ?? Data())
+            body.append("\r\n".data(using: .utf8)!)
+        }
+        body.append("--\(boundary)--\r\n".data(using: .utf8)!)
         request.httpBody = body
 
         let respData: Data
