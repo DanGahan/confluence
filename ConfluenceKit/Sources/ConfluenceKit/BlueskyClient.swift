@@ -14,6 +14,7 @@ public struct BlueskySession: Codable, Sendable, Equatable {
 public enum BlueskyError: Error, Equatable, LocalizedError {
     case invalidCredentials
     case twoFactorRequired
+    case rateLimited
     case server(String)
     case network
     case malformedResponse
@@ -24,6 +25,8 @@ public enum BlueskyError: Error, Equatable, LocalizedError {
             return "Incorrect handle or app password. Use your full handle (e.g. alice.bsky.social) and an app password from bsky.app — not your main password."
         case .twoFactorRequired:
             return "This account needs a sign-in code. App passwords bypass 2FA — create one at bsky.app → Settings → App Passwords and use that."
+        case .rateLimited:
+            return "Bluesky is rate-limiting requests. Try again in a moment."
         case .server(let message):
             return message
         case .network:
@@ -74,7 +77,7 @@ public struct BlueskyClient: Sendable {
         let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await session.data(for: request)
+            (data, response) = try await session.dataWithRateLimit(for: request)
         } catch {
             throw BlueskyError.network
         }
@@ -90,6 +93,7 @@ public struct BlueskyClient: Sendable {
             if http.statusCode == 401 || xrpcError?.error == "AuthenticationRequired" {
                 throw BlueskyError.invalidCredentials
             }
+            if http.statusCode == 429 { throw BlueskyError.rateLimited }
             throw BlueskyError.server(xrpcError?.message ?? "Bluesky returned status \(http.statusCode).")
         }
 

@@ -24,7 +24,7 @@ extension MastodonClient {
         var request = URLRequest(url: url)
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
 
-        guard let (data, response) = try? await session.data(for: request),
+        guard let (data, response) = try? await session.dataWithRateLimit(for: request),
               let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             return SearchResults(failed: true)
         }

@@ -18,11 +18,12 @@ extension MastodonClient {
         request.httpBody = body.percentEncodedQuery?.data(using: .utf8)
 
         let response: URLResponse
-        do { (_, response) = try await session.data(for: request) }
+        do { (_, response) = try await session.dataWithRateLimit(for: request) }
         catch { throw MastodonError.network }
         guard let http = response as? HTTPURLResponse else { throw MastodonError.malformedResponse }
         guard (200..<300).contains(http.statusCode) else {
             if http.statusCode == 401 { throw MastodonError.tokenExchangeFailed }
+            if http.statusCode == 429 { throw MastodonError.rateLimited }
             throw MastodonError.server("Mastodon returned status \(http.statusCode).")
         }
     }
@@ -50,12 +51,13 @@ extension MastodonClient {
 
         let respData: Data
         let response: URLResponse
-        do { (respData, response) = try await session.data(for: request) }
+        do { (respData, response) = try await session.dataWithRateLimit(for: request) }
         catch { throw MastodonError.network }
         guard let http = response as? HTTPURLResponse else { throw MastodonError.malformedResponse }
         // 200 = ready, 202 = still processing (id is usable once processing finishes).
         guard http.statusCode == 200 || http.statusCode == 202 else {
             if http.statusCode == 401 { throw MastodonError.tokenExchangeFailed }
+            if http.statusCode == 429 { throw MastodonError.rateLimited }
             throw MastodonError.server("Mastodon media upload returned status \(http.statusCode).")
         }
         struct Media: Decodable { let id: String }
@@ -70,7 +72,7 @@ extension MastodonClient {
         components.host = host
         components.path = "/api/v2/instance"
         guard let url = components.url,
-              let (data, response) = try? await session.data(from: url),
+              let (data, response) = try? await session.dataWithRateLimit(for: URLRequest(url: url)),
               let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
               let decoded = try? JSONDecoder().decode(InstanceInfo.self, from: data),
               let max = decoded.configuration?.statuses?.maxCharacters else {

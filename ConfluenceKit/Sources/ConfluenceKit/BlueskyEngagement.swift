@@ -41,11 +41,15 @@ extension BlueskyClient {
             "repo": parts[0], "collection": parts[1], "rkey": parts[2],
         ])
         let response: URLResponse
-        do { (_, response) = try await session.data(for: request) }
+        do { (_, response) = try await session.dataWithRateLimit(for: request) }
         catch { throw BlueskyError.network }
         guard let http = response as? HTTPURLResponse else { throw BlueskyError.malformedResponse }
         guard (200..<300).contains(http.statusCode) else {
-            throw http.statusCode == 401 ? BlueskyError.invalidCredentials : BlueskyError.server("Bluesky returned status \(http.statusCode).")
+            switch http.statusCode {
+            case 401: throw BlueskyError.invalidCredentials
+            case 429: throw BlueskyError.rateLimited
+            default: throw BlueskyError.server("Bluesky returned status \(http.statusCode).")
+            }
         }
     }
 
@@ -64,12 +68,16 @@ extension BlueskyClient {
         ])
         let data: Data
         let response: URLResponse
-        do { (data, response) = try await session.data(for: request) }
+        do { (data, response) = try await session.dataWithRateLimit(for: request) }
         catch let error as BlueskyError { throw error }
         catch { throw BlueskyError.network }
         guard let http = response as? HTTPURLResponse else { throw BlueskyError.malformedResponse }
         guard (200..<300).contains(http.statusCode) else {
-            throw http.statusCode == 401 ? BlueskyError.invalidCredentials : BlueskyError.server("Bluesky returned status \(http.statusCode).")
+            switch http.statusCode {
+            case 401: throw BlueskyError.invalidCredentials
+            case 429: throw BlueskyError.rateLimited
+            default: throw BlueskyError.server("Bluesky returned status \(http.statusCode).")
+            }
         }
         struct Created: Decodable { let uri: String }
         guard let created = try? JSONDecoder().decode(Created.self, from: data) else { throw BlueskyError.malformedResponse }

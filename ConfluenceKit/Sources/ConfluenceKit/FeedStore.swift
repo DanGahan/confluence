@@ -11,6 +11,10 @@ public typealias PageFetcher = @Sendable (_ cursor: String?) async throws -> Fee
 public final class FeedStore {
     public private(set) var items: [FeedItem] = []
     public private(set) var failedNetworks: Set<Network> = []
+    /// Networks whose last fetch returned 429 after the client's retry budget. Distinct
+    /// from `failedNetworks` so the UI can surface a rate-limit banner ("try again in a
+    /// moment") rather than a generic failure.
+    public private(set) var rateLimitedNetworks: Set<Network> = []
     public private(set) var isLoading = false
 
     private var fetchers: [Network: PageFetcher] = [:]
@@ -31,7 +35,7 @@ public final class FeedStore {
         guard !isLoading else { return }
         isLoading = true
         defer { isLoading = false }
-        cursors = [:]; reachedEnd = []; perNetwork = [:]; failedNetworks = []
+        cursors = [:]; reachedEnd = []; perNetwork = [:]; failedNetworks = []; rateLimitedNetworks = []
 
         let active = Array(fetchers)
         let results = await withTaskGroup(of: (Network, Result<FeedPage, Error>).self) { group in
@@ -72,8 +76,10 @@ public final class FeedStore {
             if let cursor = page.nextCursor, !page.items.isEmpty { cursors[network] = cursor }
             else { reachedEnd.insert(network) }
             failedNetworks.remove(network)
-        case .failure:
-            failedNetworks.insert(network)
+            rateLimitedNetworks.remove(network)
+        case .failure(let error):
+            if isRateLimitError(error) { rateLimitedNetworks.insert(network) }
+            else { failedNetworks.insert(network) }
             reachedEnd.insert(network) // stop paginating a failed network until next refresh
         }
     }

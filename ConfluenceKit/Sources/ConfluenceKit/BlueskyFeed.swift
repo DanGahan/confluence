@@ -17,6 +17,7 @@ extension BlueskyClient {
             if response.statusCode == 401 || xrpcError == "ExpiredToken" || xrpcError == "InvalidToken" || xrpcError == "AuthenticationRequired" {
                 throw BlueskyError.invalidCredentials
             }
+            if response.statusCode == 429 { throw BlueskyError.rateLimited }
             throw BlueskyError.server("Bluesky timeline returned status \(response.statusCode).")
         }
         let decoded: Timeline
@@ -38,7 +39,10 @@ extension BlueskyClient {
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
 
         let (data, response) = try await timelineData(for: request)
-        guard (200..<300).contains(response.statusCode) else { throw BlueskyError.server("Bluesky thread status \(response.statusCode).") }
+        guard (200..<300).contains(response.statusCode) else {
+            if response.statusCode == 429 { throw BlueskyError.rateLimited }
+            throw BlueskyError.server("Bluesky thread status \(response.statusCode).")
+        }
         guard let decoded = try? JSONDecoder().decode(ThreadResponse.self, from: data) else { throw BlueskyError.malformedResponse }
 
         var posts: [Post] = []
@@ -66,7 +70,10 @@ extension BlueskyClient {
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
 
         let (data, response) = try await timelineData(for: request)
-        guard (200..<300).contains(response.statusCode) else { throw BlueskyError.server("Bluesky author feed status \(response.statusCode).") }
+        guard (200..<300).contains(response.statusCode) else {
+            if response.statusCode == 429 { throw BlueskyError.rateLimited }
+            throw BlueskyError.server("Bluesky author feed status \(response.statusCode).")
+        }
         guard let decoded = try? JSONDecoder().decode(Timeline.self, from: data) else { throw BlueskyError.malformedResponse }
         return FeedPage(items: decoded.feed.compactMap(\.feedItem), nextCursor: decoded.cursor)
     }
@@ -74,7 +81,7 @@ extension BlueskyClient {
     // Reuses the private URLSession via a tiny internal shim so decoding stays here.
     private func timelineData(for request: URLRequest) async throws -> (Data, HTTPURLResponse) {
         do {
-            let (data, response) = try await session.data(for: request)
+            let (data, response) = try await session.dataWithRateLimit(for: request)
             guard let http = response as? HTTPURLResponse else { throw BlueskyError.malformedResponse }
             return (data, http)
         } catch let error as BlueskyError {

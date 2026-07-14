@@ -18,11 +18,12 @@ extension MastodonClient {
 
         let data: Data
         let response: URLResponse
-        do { (data, response) = try await session.data(for: request) }
+        do { (data, response) = try await session.dataWithRateLimit(for: request) }
         catch { throw MastodonError.network }
         guard let http = response as? HTTPURLResponse else { throw MastodonError.malformedResponse }
         guard (200..<300).contains(http.statusCode) else {
             if http.statusCode == 401 { throw MastodonError.tokenExchangeFailed }
+            if http.statusCode == 429 { throw MastodonError.rateLimited }
             throw MastodonError.server("Mastodon notifications returned status \(http.statusCode).")
         }
         guard let notes = try? JSONDecoder().decode([Note].self, from: data) else { throw MastodonError.malformedResponse }

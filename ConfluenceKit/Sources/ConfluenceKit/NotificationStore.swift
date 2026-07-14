@@ -13,6 +13,9 @@ public final class NotificationStore {
     public private(set) var unreadCount = 0
     public private(set) var perNetworkUnread: [Network: Int] = [:]
     public private(set) var failedNetworks: Set<Network> = []
+    /// Networks whose last fetch returned 429 after client retries — distinct from a
+    /// generic failure so callers can show a "try again in a moment" hint.
+    public private(set) var rateLimitedNetworks: Set<Network> = []
 
     private var fetchers: [Network: NotificationFetcher] = [:]
     private let defaults: UserDefaults
@@ -42,13 +45,17 @@ public final class NotificationStore {
 
         var perNetwork: [Network: [NotificationItem]] = [:]
         var failures: Set<Network> = []
+        var rateLimited: Set<Network> = []
         for (network, result) in results {
             switch result {
             case .success(let notes): perNetwork[network] = notes
-            case .failure: failures.insert(network)
+            case .failure(let error):
+                if isRateLimitError(error) { rateLimited.insert(network) }
+                else { failures.insert(network) }
             }
         }
         failedNetworks = failures
+        rateLimitedNetworks = rateLimited
         items = mergeNotifications(Array(perNetwork.values))
         recomputeUnread()
     }

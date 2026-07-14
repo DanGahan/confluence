@@ -33,10 +33,11 @@ extension BlueskyClient {
         var request = URLRequest(url: components.url!)
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         do {
-            let (data, response) = try await session.data(for: request)
+            let (data, response) = try await session.dataWithRateLimit(for: request)
             guard let http = response as? HTTPURLResponse else { throw BlueskyError.malformedResponse }
             guard (200..<300).contains(http.statusCode) else {
                 if http.statusCode == 401 { throw BlueskyError.invalidCredentials }
+                if http.statusCode == 429 { throw BlueskyError.rateLimited }
                 throw BlueskyError.server("Bluesky returned status \(http.statusCode).")
             }
             return data
