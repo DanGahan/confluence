@@ -1,8 +1,8 @@
 import Foundation
 import Observation
 
-/// Publishes text (and any attached image data) to one network. Throws on failure.
-public typealias Poster = @Sendable (_ text: String, _ images: [Data]) async throws -> Void
+/// Publishes text (and any attached images with alt-text) to one network. Throws on failure.
+public typealias Poster = @Sendable (_ text: String, _ images: [Attachment]) async throws -> Void
 
 /// Owns the cross-post composer: text, per-network targets (persisted), character limits,
 /// and independent posting. Posting skips networks that already succeeded, so retrying a
@@ -11,8 +11,8 @@ public typealias Poster = @Sendable (_ text: String, _ images: [Data]) async thr
 @Observable
 public final class ComposerStore {
     public var text = ""
-    /// Attached image data (JPEG), uploaded per network on post. Capped at 4 (both networks' max).
-    public var attachments: [Data] = []
+    /// Attached images (JPEG + optional alt-text), uploaded per network on post. Capped at 4.
+    public var attachments: [Attachment] = []
     public var postToBluesky: Bool { didSet { defaults.set(postToBluesky, forKey: "postToBluesky") } }
     public var postToMastodon: Bool { didSet { defaults.set(postToMastodon, forKey: "postToMastodon") } }
 

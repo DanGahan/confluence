@@ -189,26 +189,20 @@ struct ComposerView: View {
             guard room > 0 else { break }
             if let raw = try? await item.loadTransferable(type: Data.self),
                let image = NSImage(data: raw), let data = jpegData(from: image) {
-                composer.attachments.append(data)
+                composer.attachments.append(Attachment(data: data))
             }
         }
         pickerItems = []
     }
 
     private func attachmentChips(_ composer: ComposerStore) -> some View {
-        HStack(spacing: 8) {
-            ForEach(Array(composer.attachments.enumerated()), id: \.offset) { i, data in
-                if let image = NSImage(data: data) {
-                    Image(nsImage: image).resizable().scaledToFill()
-                        .frame(width: 56, height: 56).clipShape(RoundedRectangle(cornerRadius: 6))
-                        .overlay(alignment: .topTrailing) {
-                            Button { composer.attachments.remove(at: i) } label: {
-                                Image(systemName: "xmark.circle.fill").symbolRenderingMode(.palette)
-                                    .foregroundStyle(.white, .black.opacity(0.6))
-                            }
-                            .buttonStyle(.plain).padding(2)
-                            .accessibilityLabel("Remove attachment")
-                        }
+        @Bindable var composer = composer
+        return HStack(spacing: 8) {
+            ForEach(Array(composer.attachments.enumerated()), id: \.element.id) { i, attachment in
+                if let image = NSImage(data: attachment.data) {
+                    AttachmentChip(image: image,
+                                   alt: $composer.attachments[i].alt,
+                                   onRemove: { composer.attachments.remove(at: i) })
                 }
             }
         }
@@ -242,7 +236,9 @@ struct ComposerView: View {
         guard panel.runModal() == .OK else { return }
         let room = ComposerStore.maxAttachments - composer.attachments.count
         for url in panel.urls.prefix(room) {
-            if let image = NSImage(contentsOf: url), let data = jpegData(from: image) { composer.attachments.append(data) }
+            if let image = NSImage(contentsOf: url), let data = jpegData(from: image) {
+                composer.attachments.append(Attachment(data: data))
+            }
         }
     }
 
@@ -330,8 +326,75 @@ struct ComposerView: View {
     }
 }
 
+/// Attachment thumbnail with a remove button, an "ALT" badge, and a popover to enter the
+/// image description. The badge fills in when alt is provided so the state is visible at a glance.
+private struct AttachmentChip: View {
+    let image: NSImage
+    @Binding var alt: String
+    let onRemove: () -> Void
+
+    @State private var editing = false
+    @State private var draft = ""
+
+    private var hasAlt: Bool { !alt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+
+    var body: some View {
+        Image(nsImage: image).resizable().scaledToFill()
+            .frame(width: 56, height: 56).clipShape(RoundedRectangle(cornerRadius: 6))
+            .overlay(alignment: .topTrailing) {
+                Button { onRemove() } label: {
+                    Image(systemName: "xmark.circle.fill").symbolRenderingMode(.palette)
+                        .foregroundStyle(.white, .black.opacity(0.6))
+                }
+                .buttonStyle(.plain).padding(2)
+                .accessibilityLabel("Remove attachment")
+            }
+            .overlay(alignment: .bottomLeading) {
+                Button {
+                    draft = alt
+                    editing = true
+                } label: {
+                    Text("ALT")
+                        .font(.caption2).bold()
+                        .padding(.horizontal, 5).padding(.vertical, 2)
+                        .background(hasAlt ? Color.accentColor : Color.black.opacity(0.6),
+                                    in: RoundedRectangle(cornerRadius: 3))
+                        .foregroundStyle(.white)
+                }
+                .buttonStyle(.plain).padding(2)
+                .accessibilityLabel(hasAlt ? "Edit image description" : "Add image description")
+                .accessibilityValue(alt)
+                .help(hasAlt ? "Edit image description" : "Add image description")
+                .popover(isPresented: $editing, arrowEdge: .bottom) { altPopover }
+            }
+    }
+
+    private var altPopover: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Describe this image").font(.headline)
+            Text("Screen readers read this description. Skip if the image is decorative.")
+                .font(.caption).foregroundStyle(.secondary)
+            TextEditor(text: $draft)
+                .frame(width: 320, height: 100)
+                .overlay(RoundedRectangle(cornerRadius: 6).stroke(.quaternary))
+                .accessibilityLabel("Image description")
+            HStack {
+                Spacer()
+                Button("Cancel") { editing = false }
+                Button("Save") {
+                    alt = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+                    editing = false
+                }
+                .keyboardShortcut(.defaultAction)
+                .buttonStyle(.borderedProminent)
+            }
+        }
+        .padding(12)
+    }
+}
+
 /// Downscales an image and returns JPEG data under the size both networks accept (Bluesky caps
-/// blobs at ~1 MB). ponytail: fixed 1600px / 0.8 quality; add alt-text/HEIC if needed.
+/// blobs at ~1 MB). ponytail: fixed 1600px / 0.8 quality; HEIC support pending.
 private func jpegData(from image: NSImage, maxDimension: CGFloat = 1600, maxBytes: Int = 900_000) -> Data? {
     let size = image.size
     let scale = min(1, maxDimension / max(size.width, size.height))

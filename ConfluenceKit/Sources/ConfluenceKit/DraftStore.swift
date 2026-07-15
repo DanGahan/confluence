@@ -5,12 +5,12 @@ import Observation
 public struct Draft: Codable, Identifiable, Sendable, Equatable {
     public let id: UUID
     public var text: String
-    public var attachments: [Data]
+    public var attachments: [Attachment]
     public var postToBluesky: Bool
     public var postToMastodon: Bool
     public var savedAt: Date
 
-    public init(id: UUID = UUID(), text: String, attachments: [Data],
+    public init(id: UUID = UUID(), text: String, attachments: [Attachment],
                 postToBluesky: Bool, postToMastodon: Bool, savedAt: Date = Date()) {
         self.id = id
         self.text = text
