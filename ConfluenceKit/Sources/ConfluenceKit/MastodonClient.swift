@@ -28,6 +28,7 @@ public enum MastodonError: Error, Equatable, LocalizedError {
     case stateMismatch
     case authorizationDenied
     case tokenExchangeFailed
+    case rateLimited
     case server(String)
     case network
     case malformedResponse
@@ -46,6 +47,8 @@ public enum MastodonError: Error, Equatable, LocalizedError {
             return "Sign in was cancelled or denied."
         case .tokenExchangeFailed:
             return "The server rejected the sign-in. Please try again."
+        case .rateLimited:
+            return "This Mastodon server is rate-limiting requests. Try again in a moment."
         case .network:
             return "Couldn't reach that server. Check the domain and your connection."
         case .malformedResponse:
@@ -166,11 +169,12 @@ public struct MastodonClient: Sendable {
         let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await session.data(for: request)
+            (data, response) = try await session.dataWithRateLimit(for: request)
         } catch {
             throw MastodonError.network
         }
         guard let http = response as? HTTPURLResponse else { throw MastodonError.malformedResponse }
+        if http.statusCode == 429 { throw MastodonError.rateLimited }
         return (data, http)
     }
 

@@ -42,11 +42,12 @@ extension MastodonClient {
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
 
         let response: URLResponse
-        do { (_, response) = try await session.data(for: request) }
+        do { (_, response) = try await session.dataWithRateLimit(for: request) }
         catch { throw MastodonError.network }
         guard let http = response as? HTTPURLResponse else { throw MastodonError.malformedResponse }
         guard (200..<300).contains(http.statusCode) else {
             if http.statusCode == 401 { throw MastodonError.tokenExchangeFailed }
+            if http.statusCode == 429 { throw MastodonError.rateLimited }
             throw MastodonError.server("Mastodon returned status \(http.statusCode).")
         }
     }

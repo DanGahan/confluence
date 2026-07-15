@@ -40,7 +40,7 @@ extension BlueskyClient {
 
     private func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
         do {
-            let (data, response) = try await session.data(for: request)
+            let (data, response) = try await session.dataWithRateLimit(for: request)
             guard let http = response as? HTTPURLResponse else { throw BlueskyError.malformedResponse }
             return (data, http)
         } catch let error as BlueskyError { throw error }
@@ -48,6 +48,10 @@ extension BlueskyClient {
     }
 
     private func mapError(_ status: Int) -> BlueskyError {
-        status == 401 ? .invalidCredentials : .server("Bluesky returned status \(status).")
+        switch status {
+        case 401: return .invalidCredentials
+        case 429: return .rateLimited
+        default: return .server("Bluesky returned status \(status).")
+        }
     }
 }

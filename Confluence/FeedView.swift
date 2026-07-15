@@ -93,6 +93,9 @@ struct FeedView: View {
     private var feedScroll: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
+                if !feed.rateLimitedNetworks.isEmpty {
+                    rateLimitBanner.padding(.horizontal).padding(.top, 8)
+                }
                 if !feed.failedNetworks.isEmpty {
                     failureBanner.padding(.horizontal).padding(.top, 8)
                 }
@@ -307,6 +310,14 @@ struct FeedView: View {
     private var failureBanner: some View {
         let names = feed.failedNetworks.map { $0 == .bluesky ? "Bluesky" : "Mastodon" }.sorted().joined(separator: " and ")
         return Label("Couldn't refresh \(names). Showing what loaded.", systemImage: "exclamationmark.triangle.fill")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .listRowSeparator(.hidden)
+    }
+
+    private var rateLimitBanner: some View {
+        let names = feed.rateLimitedNetworks.map { $0 == .bluesky ? "Bluesky" : "Mastodon" }.sorted().joined(separator: " and ")
+        return Label("\(names) is rate-limiting requests. Try again in a moment.", systemImage: "hourglass")
             .font(.caption)
             .foregroundStyle(.secondary)
             .listRowSeparator(.hidden)

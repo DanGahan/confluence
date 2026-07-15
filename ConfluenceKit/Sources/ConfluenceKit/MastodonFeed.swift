@@ -15,11 +15,12 @@ extension MastodonClient {
 
         let data: Data
         let response: URLResponse
-        do { (data, response) = try await session.data(for: request) }
+        do { (data, response) = try await session.dataWithRateLimit(for: request) }
         catch { throw MastodonError.network }
         guard let http = response as? HTTPURLResponse else { throw MastodonError.malformedResponse }
         guard (200..<300).contains(http.statusCode) else {
             if http.statusCode == 401 { throw MastodonError.tokenExchangeFailed }
+            if http.statusCode == 429 { throw MastodonError.rateLimited }
             throw MastodonError.server("Mastodon timeline returned status \(http.statusCode).")
         }
 
@@ -45,9 +46,11 @@ extension MastodonClient {
 
         let data: Data
         let response: URLResponse
-        do { (data, response) = try await session.data(for: request) }
+        do { (data, response) = try await session.dataWithRateLimit(for: request) }
         catch { throw MastodonError.network }
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+        guard let http = response as? HTTPURLResponse else { throw MastodonError.malformedResponse }
+        guard (200..<300).contains(http.statusCode) else {
+            if http.statusCode == 429 { throw MastodonError.rateLimited }
             throw MastodonError.server("Mastodon account statuses failed.")
         }
         guard let statuses = try? JSONDecoder().decode([Status].self, from: data) else { throw MastodonError.malformedResponse }
@@ -87,9 +90,11 @@ extension MastodonClient {
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         let data: Data
         let response: URLResponse
-        do { (data, response) = try await session.data(for: request) }
+        do { (data, response) = try await session.dataWithRateLimit(for: request) }
         catch { throw MastodonError.network }
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+        guard let http = response as? HTTPURLResponse else { throw MastodonError.malformedResponse }
+        guard (200..<300).contains(http.statusCode) else {
+            if http.statusCode == 429 { throw MastodonError.rateLimited }
             throw MastodonError.server("Mastodon request to \(path) failed.")
         }
         return data

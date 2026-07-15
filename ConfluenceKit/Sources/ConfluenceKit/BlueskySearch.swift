@@ -37,8 +37,10 @@ extension BlueskyClient {
             + (cursor.map { [URLQueryItem(name: "cursor", value: $0)] } ?? [])
         var request = URLRequest(url: components.url!)
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-        let (data, response) = try await session.data(for: request)
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+        let (data, response) = try await session.dataWithRateLimit(for: request)
+        guard let http = response as? HTTPURLResponse else { throw BlueskyError.malformedResponse }
+        guard (200..<300).contains(http.statusCode) else {
+            if http.statusCode == 429 { throw BlueskyError.rateLimited }
             throw BlueskyError.server("Bluesky search failed.")
         }
         return data

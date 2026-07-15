@@ -10,7 +10,7 @@ extension BlueskyClient {
 
         let data: Data
         let response: URLResponse
-        do { (data, response) = try await session.data(for: request) }
+        do { (data, response) = try await session.dataWithRateLimit(for: request) }
         catch { throw BlueskyError.network }
         guard let http = response as? HTTPURLResponse else { throw BlueskyError.malformedResponse }
         guard (200..<300).contains(http.statusCode) else {
@@ -18,6 +18,7 @@ extension BlueskyClient {
             if http.statusCode == 401 || err == "ExpiredToken" || err == "InvalidToken" || err == "AuthenticationRequired" {
                 throw BlueskyError.invalidCredentials
             }
+            if http.statusCode == 429 { throw BlueskyError.rateLimited }
             throw BlueskyError.server("Bluesky notifications returned status \(http.statusCode).")
         }
         guard let decoded = try? JSONDecoder().decode(Notifications.self, from: data) else { throw BlueskyError.malformedResponse }

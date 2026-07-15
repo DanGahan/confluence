@@ -13,6 +13,7 @@ extension BlueskyClient {
         let (respData, http) = try await send(request)
         guard (200..<300).contains(http.statusCode) else {
             if http.statusCode == 401 { throw BlueskyError.invalidCredentials }
+            if http.statusCode == 429 { throw BlueskyError.rateLimited }
             throw BlueskyError.server("Bluesky upload returned status \(http.statusCode).")
         }
         guard let obj = try? JSONSerialization.jsonObject(with: respData) as? [String: Any],
@@ -48,6 +49,7 @@ extension BlueskyClient {
         let (data, http) = try await send(request)
         guard (200..<300).contains(http.statusCode) else {
             if http.statusCode == 401 { throw BlueskyError.invalidCredentials }
+            if http.statusCode == 429 { throw BlueskyError.rateLimited }
             throw BlueskyError.server("Bluesky returned status \(http.statusCode).")
         }
         struct Created: Decodable { let uri: String }
@@ -57,7 +59,7 @@ extension BlueskyClient {
 
     private func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
         do {
-            let (data, response) = try await session.data(for: request)
+            let (data, response) = try await session.dataWithRateLimit(for: request)
             guard let http = response as? HTTPURLResponse else { throw BlueskyError.malformedResponse }
             return (data, http)
         } catch let error as BlueskyError { throw error }
