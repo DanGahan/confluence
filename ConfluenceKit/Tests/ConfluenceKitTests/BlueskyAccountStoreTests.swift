@@ -70,13 +70,13 @@ struct BlueskyAccountStoreTests {
         #expect(keychain.isEmpty)
     }
 
-    @Test func restoresPersistedSessionOnRestore() throws {
+    @Test func restoresPersistedSessionOnRestore() async throws {
         let keychain = InMemorySecureStore()
         try keychain.set(okSessionJSON("bob.bsky.social"), for: "session")
 
         let sut = store(keychain) { ($0.ok(), Data()) }
         #expect(sut.session == nil)  // not read in init (#126) — restore() reads it after launch
-        sut.restore()
+        await sut.restore()
         #expect(sut.session?.handle == "bob.bsky.social")
     }
 
@@ -84,7 +84,7 @@ struct BlueskyAccountStoreTests {
         let keychain = InMemorySecureStore()
         try keychain.set(okSessionJSON(), for: "session")
         let sut = store(keychain) { ($0.ok(), self.okSessionJSON(access: "new", refresh: "new-ref")) }
-        sut.restore()
+        await sut.restore()
 
         try await sut.refresh()
         #expect(sut.session?.accessJwt == "new")
@@ -98,7 +98,7 @@ struct BlueskyAccountStoreTests {
         let keychain = InMemorySecureStore()
         try keychain.set(okSessionJSON(access: "old"), for: "session")
         let sut = store(keychain) { ($0.ok(), self.okSessionJSON(access: "new", refresh: "new-ref")) }
-        sut.restore()
+        await sut.restore()
 
         final class Box: @unchecked Sendable { var calls = 0; var seen: [String] = [] }
         let box = Box()
@@ -117,7 +117,7 @@ struct BlueskyAccountStoreTests {
         let keychain = InMemorySecureStore()
         try keychain.set(okSessionJSON(access: "tok"), for: "session")
         let sut = store(keychain) { ($0.ok(), self.okSessionJSON()) }
-        sut.restore()
+        await sut.restore()
 
         final class Box: @unchecked Sendable { var calls = 0 }
         let box = Box()
