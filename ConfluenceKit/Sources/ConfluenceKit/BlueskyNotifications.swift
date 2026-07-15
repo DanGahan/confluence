@@ -47,6 +47,7 @@ extension BlueskyClient {
                 network: .bluesky,
                 rawId: uri,
                 kind: kind,
+                actorID: author.did,
                 actorName: author.displayName ?? author.handle,
                 actorHandle: author.handle,
                 avatarURL: author.avatar.flatMap(URL.init(string:)),
@@ -55,6 +56,6 @@ extension BlueskyClient {
             )
         }
     }
-    private struct Author: Decodable { let handle: String; let displayName: String?; let avatar: String? }
+    private struct Author: Decodable { let did: String; let handle: String; let displayName: String?; let avatar: String? }
     private struct Record: Decodable { let text: String? }
 }

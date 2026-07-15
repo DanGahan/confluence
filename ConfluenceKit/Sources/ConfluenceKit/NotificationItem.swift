@@ -9,6 +9,9 @@ public struct NotificationItem: Identifiable, Sendable, Equatable {
     public let network: Network
     public let rawId: String
     public let kind: Kind
+    /// The actor's network-native account id (Bluesky DID, Mastodon numeric id) — needed to
+    /// open their profile from a notification row without a separate lookup.
+    public let actorID: String
     public let actorName: String
     public let actorHandle: String
     public let avatarURL: URL?
@@ -18,11 +21,12 @@ public struct NotificationItem: Identifiable, Sendable, Equatable {
 
     public var id: String { "\(network.rawValue):\(rawId)" }
 
-    public init(network: Network, rawId: String, kind: Kind, actorName: String, actorHandle: String,
+    public init(network: Network, rawId: String, kind: Kind, actorID: String, actorName: String, actorHandle: String,
                 avatarURL: URL?, createdAt: Date, snippet: String = "") {
         self.network = network
         self.rawId = rawId
         self.kind = kind
+        self.actorID = actorID
         self.actorName = actorName
         self.actorHandle = actorHandle
         self.avatarURL = avatarURL

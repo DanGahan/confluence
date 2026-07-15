@@ -6,10 +6,10 @@ struct NotificationDecodingTests {
     @Test func blueskyMapsAndFiltersReasons() async throws {
         let json = """
         {"notifications":[
-          {"uri":"at://1","reason":"follow","author":{"handle":"a.bsky.social","displayName":"Alice","avatar":"https://a"},"indexedAt":"2026-07-01T10:00:00.000Z"},
-          {"uri":"at://2","reason":"like","author":{"handle":"b.bsky.social"},"indexedAt":"2026-07-01T09:00:00.000Z"},
-          {"uri":"at://3","reason":"repost","author":{"handle":"c.bsky.social"},"record":{"text":"boosted"},"indexedAt":"2026-07-01T08:00:00.000Z"},
-          {"uri":"at://4","reason":"mention","author":{"handle":"d.bsky.social"},"record":{"text":"hey @you"},"indexedAt":"2026-07-01T07:00:00.000Z"}
+          {"uri":"at://1","reason":"follow","author":{"did":"did:plc:alice","handle":"a.bsky.social","displayName":"Alice","avatar":"https://a"},"indexedAt":"2026-07-01T10:00:00.000Z"},
+          {"uri":"at://2","reason":"like","author":{"did":"did:plc:bob","handle":"b.bsky.social"},"indexedAt":"2026-07-01T09:00:00.000Z"},
+          {"uri":"at://3","reason":"repost","author":{"did":"did:plc:carol","handle":"c.bsky.social"},"record":{"text":"boosted"},"indexedAt":"2026-07-01T08:00:00.000Z"},
+          {"uri":"at://4","reason":"mention","author":{"did":"did:plc:dave","handle":"d.bsky.social"},"record":{"text":"hey @you"},"indexedAt":"2026-07-01T07:00:00.000Z"}
         ]}
         """.data(using: .utf8)!
         let client = BlueskyClient(session: MockURLProtocol.session { request in
@@ -20,15 +20,16 @@ struct NotificationDecodingTests {
         let notes = try await client.notifications(accessToken: "tok")
         #expect(notes.map(\.kind) == [.follow, .repost, .mention]) // like filtered out
         #expect(notes[0].actorName == "Alice")
+        #expect(notes[0].actorID == "did:plc:alice")
         #expect(notes[2].snippet == "hey @you")
     }
 
     @Test func mastodonMapsAndFiltersTypes() async throws {
         let json = """
         [
-          {"id":"1","type":"follow","created_at":"2026-07-01T10:00:00.000Z","account":{"display_name":"Carol","acct":"carol","avatar":"https://c"}},
-          {"id":"2","type":"favourite","created_at":"2026-07-01T09:30:00.000Z","account":{"display_name":"X","acct":"x","avatar":"https://x"}},
-          {"id":"3","type":"reblog","created_at":"2026-07-01T09:00:00.000Z","account":{"display_name":"Dave","acct":"dave","avatar":"https://d"},"status":{"content":"<p>hi</p>"}}
+          {"id":"1","type":"follow","created_at":"2026-07-01T10:00:00.000Z","account":{"id":"11","display_name":"Carol","acct":"carol","avatar":"https://c"}},
+          {"id":"2","type":"favourite","created_at":"2026-07-01T09:30:00.000Z","account":{"id":"22","display_name":"X","acct":"x","avatar":"https://x"}},
+          {"id":"3","type":"reblog","created_at":"2026-07-01T09:00:00.000Z","account":{"id":"33","display_name":"Dave","acct":"dave","avatar":"https://d"},"status":{"content":"<p>hi</p>"}}
         ]
         """.data(using: .utf8)!
         let client = MastodonClient(session: MockURLProtocol.session { request in
@@ -39,13 +40,16 @@ struct NotificationDecodingTests {
         #expect(notes.map(\.kind) == [.follow, .repost]) // favourite filtered out
         #expect(notes[1].snippet == "hi")
         #expect(notes[0].actorHandle == "carol@mastodon.social")
+        #expect(notes[0].actorID == "11")
+        #expect(notes[1].actorID == "33")
     }
 }
 
 @MainActor
 struct NotificationStoreTests {
     nonisolated func note(_ n: Network, _ id: String, _ secondsAgo: TimeInterval) -> NotificationItem {
-        NotificationItem(network: n, rawId: id, kind: .follow, actorName: "A", actorHandle: "a",
+        NotificationItem(network: n, rawId: id, kind: .follow, actorID: "actor-\(id)",
+                         actorName: "A", actorHandle: "a",
                          avatarURL: nil, createdAt: Date(timeIntervalSince1970: 1_000_000 - secondsAgo))
     }
     func store() -> NotificationStore {

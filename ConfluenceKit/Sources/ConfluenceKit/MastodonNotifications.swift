@@ -51,6 +51,7 @@ extension MastodonClient {
                 network: .mastodon,
                 rawId: id,
                 kind: kind,
+                actorID: account.id,
                 actorName: account.displayName.isEmpty ? account.acct : account.displayName,
                 actorHandle: account.acct.contains("@") ? account.acct : "\(account.acct)@\(host)",
                 avatarURL: URL(string: account.avatar),
@@ -60,8 +61,8 @@ extension MastodonClient {
         }
     }
     private struct Account: Decodable {
-        let displayName: String; let acct: String; let avatar: String
-        enum CodingKeys: String, CodingKey { case acct, avatar; case displayName = "display_name" }
+        let id: String; let displayName: String; let acct: String; let avatar: String
+        enum CodingKeys: String, CodingKey { case id, acct, avatar; case displayName = "display_name" }
     }
     private struct Status: Decodable { let content: String }
 }
