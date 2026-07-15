@@ -22,11 +22,18 @@ public final class BlueskyAccountStore {
         self.keychain = keychain
     }
 
-    /// Restores a persisted session (if any) from the Keychain. Call after the UI is up — not
-    /// from `init` — because reading the Keychain synchronously at launch blocks on the access
-    /// prompt and stops the window from ever appearing (#126). Corrupt/absent item = logged-out.
-    public func restore() {
-        session = try? keychain.value(BlueskySession.self, for: Self.account)
+    /// Restores a persisted session (if any) from the Keychain.
+    ///
+    /// The Keychain read happens on a detached task, off the main actor, so the app remains
+    /// interactive while it runs — including if the OS shows an access prompt (#131). Call
+    /// after the UI is up, not from `init` (#126). Corrupt/absent item = logged-out.
+    public func restore() async {
+        let store = keychain
+        let account = Self.account
+        let restored: BlueskySession? = await Task.detached {
+            try? store.value(BlueskySession.self, for: account)
+        }.value
+        session = restored
     }
 
     public func logIn(identifier: String, appPassword: String) async throws {
