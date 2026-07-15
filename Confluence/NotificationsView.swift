@@ -28,10 +28,14 @@ struct NotificationsView: View {
         }
         .frame(minWidth: 380, minHeight: 480)
         .onAppear { notifications.markSeen() }
+        // Same handler used on FeedView/ProfileView/ThreadView: a tapped profile URL routes
+        // to a ProfileView sheet within this sheet, keeping the notifications list underneath.
+        .handleProfileLinks()
     }
 }
 
 private struct NotificationRow: View {
+    @Environment(\.openURL) private var openURL
     let item: NotificationItem
 
     private var icon: String {
@@ -54,10 +58,16 @@ private struct NotificationRow: View {
             Image(systemName: icon)
                 .foregroundStyle(.secondary)
                 .frame(width: 20)
-            Avatar(url: item.avatarURL, size: 32)
+            actorButton {
+                Avatar(url: item.avatarURL, size: 32)
+            }
+            .accessibilityLabel("Open profile for \(item.actorName)")
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
-                    Text(item.actorName).fontWeight(.semibold).lineLimit(1)
+                    actorButton {
+                        Text(item.actorName).fontWeight(.semibold).lineLimit(1)
+                    }
+                    .accessibilityLabel("Open profile for \(item.actorName)")
                     Text(actionText).foregroundStyle(.secondary).lineLimit(1)
                     Spacer(minLength: 4)
                     networkBadge
@@ -70,8 +80,17 @@ private struct NotificationRow: View {
             }
         }
         .padding(.vertical, 4)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(item.actorName) \(actionText) on \(item.network == .bluesky ? "Bluesky" : "Mastodon"). \(item.snippet)")
+    }
+
+    private func actorButton<Label: View>(@ViewBuilder label: () -> Label) -> some View {
+        Button {
+            if let url = ProfileLink.url(network: item.network, id: item.actorID, handle: item.actorHandle) {
+                openURL(url) // routed by .handleProfileLinks() on NotificationsView
+            }
+        } label: {
+            label()
+        }
+        .buttonStyle(.plain)
     }
 
     private var networkBadge: some View {
