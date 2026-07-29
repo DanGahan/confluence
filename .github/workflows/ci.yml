@@ -21,7 +21,7 @@ jobs:
     name: Tests (unit + integration)
     runs-on: macos-26
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Run ConfluenceKit tests
         run: swift test --package-path ConfluenceKit
 
@@ -29,7 +29,7 @@ jobs:
     name: Build (app target, unsigned)
     runs-on: macos-26
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Install xcodegen
         run: brew install xcodegen
       - name: Generate Xcode project
@@ -64,7 +64,7 @@ jobs:
       contents: read
       actions: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Install Semgrep
         # pipx keeps semgrep isolated from the runner's system Python; --python
         # picks whichever Python 3 is on PATH.
@@ -78,7 +78,7 @@ jobs:
         # Run even if Semgrep exited non-zero — we still want the findings on
         # the Security tab so they're triageable.
         if: always()
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@3b0bd1d116c0bde30213346b22d4f634d96a2fb0 # v3
         with:
           sarif_file: semgrep.sarif
           category: semgrep

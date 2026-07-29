@@ -13,3 +13,9 @@ updates:
       - "github-actions"
     # PRs go to `dev` — same flow as every other change.
     target-branch: "dev"
+    # Wait a week before opening a PR for a newly-published version. Newly
+    # released packages are a supply-chain risk window (compromised or
+    # accidentally-broken releases get pulled quickly). Seven days is enough
+    # for a bad release to be yanked or reported.
+    cooldown:
+      default-days: 7
