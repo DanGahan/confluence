@@ -85,7 +85,14 @@ jobs:
           - **Commit**: [\`${COMMIT_SHORT}\`](https://github.com/${GITHUB_REPOSITORY}/commit/${COMMIT})
           - **Branch**: \`main\`
 
-          Ad-hoc signed — see the README for install instructions (right-click → Open the first time).
+          ## Install
+          1. Unzip; drag \`Confluence.app\` to \`/Applications\`.
+          2. Double-click — Gatekeeper will block with "could not verify" (expected: the app is ad-hoc signed, not notarised).
+          3. Approve once, either:
+             - **System Settings → Privacy & Security**, scroll to the bottom → **Open Anyway** → confirm with Touch ID.
+             - Or Terminal: \`xattr -d com.apple.quarantine /Applications/Confluence.app\`
+
+          Then double-click as normal. Subsequent launches don't re-prompt.
           EOF
           )
           gh release create "$VERSION" \
