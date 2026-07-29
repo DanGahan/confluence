@@ -10,6 +10,23 @@ Your social world split in two. Your attention doesn't have to.
 
 ![Confluence screenshot](docs/images/Screenshot.png)
 
+## Install
+
+Grab the latest `.zip` from
+[Releases](https://github.com/DanGahan/confluence/releases) — prod builds are
+tagged `YYYYMMDD`, dev builds `DEV_YYMMDDHHMM` (prereleases).
+
+1. Unzip; drag `Confluence.app` to `/Applications`.
+2. **First launch only:** right-click the app → **Open** → **Open** again on
+   the security dialog.
+
+The app is ad-hoc signed rather than notarised with an Apple Developer ID,
+so Gatekeeper wants a one-time human ack before it'll run. Subsequent
+launches (and later versions replacing the same bundle) don't re-prompt.
+
+Version and the exact commit the build was cut from are shown in
+**Confluence → About Confluence**.
+
 ## Why Confluence
 
 **🌊 One combined feed.** Posts from Bluesky and Mastodon, merged and sorted by

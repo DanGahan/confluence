@@ -6,3 +6,6 @@ Confluence.xcodeproj/
 DerivedData/
 *.xcuserstate
 .swiftpm/xcode/
+# Release-workflow build output (see docs/RELEASING.md dry-run).
+build/
+artefact/

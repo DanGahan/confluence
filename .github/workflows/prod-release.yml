@@ -1,0 +1,95 @@
+name: Prod release
+
+# Manually invoked from the Actions tab. Version is YYYYMMDD (UTC), sortable
+# and lexicographically comparable with prior releases. Runs only against
+# branches that make sense as a prod cut — enforce `main` by default so a
+# stray dispatch from a feature branch doesn't ship.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "release" to confirm you want to ship a prod build from this branch.'
+        required: true
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify confirmation and branch
+        env:
+          CONFIRM: ${{ github.event.inputs.confirm }}
+          REF: ${{ github.ref }}
+        run: |
+          set -euxo pipefail
+          if [ "$CONFIRM" != "release" ]; then
+            echo "::error::Type 'release' in the confirm input to proceed."
+            exit 1
+          fi
+          if [ "$REF" != "refs/heads/main" ]; then
+            echo "::error::Prod releases must be dispatched from 'main' (got: $REF)."
+            exit 1
+          fi
+
+  build:
+    needs: guard
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compute version
+        id: version
+        # YYYYMMDD in UTC. If a release already exists for today, suffix with -N
+        # so multiple prod cuts on the same day don't collide.
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euxo pipefail
+          BASE="$(date -u +%Y%m%d)"
+          TAG="$BASE"
+          SUFFIX=1
+          while gh release view "$TAG" >/dev/null 2>&1; do
+            SUFFIX=$((SUFFIX + 1))
+            TAG="${BASE}-${SUFFIX}"
+          done
+          echo "version=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "commit_short=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Run tests
+        run: swift test --package-path ConfluenceKit
+
+      - uses: ./.github/actions/build-release
+        with:
+          version: ${{ steps.version.outputs.version }}
+          commit: ${{ steps.version.outputs.commit }}
+
+      - name: Publish prod release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+          COMMIT: ${{ steps.version.outputs.commit }}
+          COMMIT_SHORT: ${{ steps.version.outputs.commit_short }}
+        run: |
+          set -euxo pipefail
+          NOTES=$(cat <<EOF
+          Prod release.
+
+          - **Version**: \`${VERSION}\`
+          - **Commit**: [\`${COMMIT_SHORT}\`](https://github.com/${GITHUB_REPOSITORY}/commit/${COMMIT})
+          - **Branch**: \`main\`
+
+          Ad-hoc signed — see the README for install instructions (right-click → Open the first time).
+          EOF
+          )
+          gh release create "$VERSION" \
+            --title "$VERSION" \
+            --notes "$NOTES" \
+            --latest \
+            --target "$GITHUB_SHA" \
+            artefact/Confluence-${VERSION}.zip

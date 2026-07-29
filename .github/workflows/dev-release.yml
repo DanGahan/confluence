@@ -1,0 +1,70 @@
+name: Dev release
+
+# Every push to `dev` produces a Dev release. Version is DEV_YYMMDDHHMM (UTC),
+# sortable so `gh release list` orders naturally. Concurrency is grouped by
+# branch so a rapid push cancels the previous build rather than piling up.
+on:
+  push:
+    branches: [dev]
+  workflow_dispatch:
+
+concurrency:
+  group: dev-release
+  cancel-in-progress: true
+
+permissions:
+  contents: write # gh release create
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # release notes need history
+
+      - name: Compute version
+        id: version
+        # DEV_YYMMDDHHMM in UTC. Also captures the short + full commit SHA.
+        run: |
+          set -euxo pipefail
+          STAMP="$(date -u +%y%m%d%H%M)"
+          echo "version=DEV_${STAMP}" >> "$GITHUB_OUTPUT"
+          echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "commit_short=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Run tests
+        run: swift test --package-path ConfluenceKit
+
+      - uses: ./.github/actions/build-release
+        with:
+          version: ${{ steps.version.outputs.version }}
+          commit: ${{ steps.version.outputs.commit }}
+
+      - name: Publish dev release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+          COMMIT: ${{ steps.version.outputs.commit }}
+          COMMIT_SHORT: ${{ steps.version.outputs.commit_short }}
+        # Prerelease flag keeps dev builds off the "Latest" pin. Tagged in a
+        # separate namespace (`dev-...`) so prod tags stay clean.
+        run: |
+          set -euxo pipefail
+          TAG="dev-${VERSION}"
+          NOTES=$(cat <<EOF
+          Automated dev build.
+
+          - **Version**: \`${VERSION}\`
+          - **Commit**: [\`${COMMIT_SHORT}\`](https://github.com/${GITHUB_REPOSITORY}/commit/${COMMIT})
+          - **Branch**: \`dev\`
+
+          Ad-hoc signed — see the README for install instructions (right-click → Open the first time).
+          EOF
+          )
+          gh release create "$TAG" \
+            --title "$TAG" \
+            --notes "$NOTES" \
+            --prerelease \
+            --target "$GITHUB_SHA" \
+            artefact/Confluence-${VERSION}.zip
