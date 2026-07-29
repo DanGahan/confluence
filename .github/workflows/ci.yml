@@ -58,18 +58,21 @@ jobs:
       security-events: write
       actions: read
       contents: read
-    # Hard timeout — the observed-build Swift extractor has hung for >30 min on
-    # this codebase against Swift 6.2 / macOS 26 SDK. build-mode: none avoids
-    # that path (source-only analysis, no compiler wrap) and completes in a few
-    # minutes. If it ever regresses, this cap fails the job fast.
-    timeout-minutes: 20
+    # Swift extractor requires an actual build to observe. `none` isn't supported;
+    # our manual xcodebuild hung >30 min. Try `autobuild` (CodeQL's own harness)
+    # with a strict cap so a repeat hang fails fast rather than burning a runner.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+      - name: Install xcodegen
+        run: brew install xcodegen
+      - name: Generate Xcode project
+        run: xcodegen generate
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v3
         with:
           languages: swift
-          build-mode: none
+          build-mode: autobuild
       - name: Analyze
         uses: github/codeql-action/analyze@v3
         with:
