@@ -15,7 +15,6 @@ settings:
   base:
     SWIFT_VERSION: "6.0"
     SWIFT_STRICT_CONCURRENCY: complete
-    MARKETING_VERSION: "0.1.0"
     CURRENT_PROJECT_VERSION: "1"
     GENERATE_INFOPLIST_FILE: YES
 
@@ -41,6 +40,13 @@ targets:
         ENABLE_DEBUG_DYLIB: NO
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.social-networking
         INFOPLIST_KEY_CFBundleDisplayName: Confluence
+        # Marketing version becomes CFBundleShortVersionString → shown in About.
+        # Release workflows override on the command line:
+        #   xcodebuild ... MARKETING_VERSION=YYYYMMDD (prod) or DEV_YYMMDDHHMM (dev)
+        # The commit hash is injected into Info.plist by the workflow AFTER build
+        # (Xcode's INFOPLIST_KEY_* only accepts a fixed set of Apple keys). Local
+        # dev builds keep the default so About shows "dev / local".
+        MARKETING_VERSION: "dev"
 
   ConfluenceUITests:
     type: bundle.ui-testing

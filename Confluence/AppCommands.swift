@@ -21,6 +21,12 @@ struct AppCommands: Commands {
     @FocusedValue(\.availableOwnScopes) private var availableOwnScopes
 
     var body: some Commands {
+        // Replace the default "About Confluence" menu item so it opens our custom About
+        // window (which surfaces the release version and the git commit the artefact was
+        // built from — see BuildInfo).
+        CommandGroup(replacing: .appInfo) {
+            Button("About Confluence") { AboutWindow.show() }
+        }
         CommandMenu("My Posts") {
             ForEach(OwnFeedScope.allCases) { scope in
                 Button(scope.title) { openOwnFeed?(scope) }

@@ -10,6 +10,35 @@ Your social world split in two. Your attention doesn't have to.
 
 ![Confluence screenshot](docs/images/Screenshot.png)
 
+## Install
+
+Grab the latest `.zip` from
+[Releases](https://github.com/DanGahan/confluence/releases) — prod builds are
+tagged `YYYYMMDD`, dev builds `DEV_YYMMDDHHMM` (prereleases).
+
+1. Unzip; drag `Confluence.app` to `/Applications`.
+2. Double-click. Gatekeeper will block it with "Apple could not verify
+   Confluence.app is free of malware…" — this is expected for any app that
+   isn't notarised by Apple.
+3. **Approve it once**, either way works:
+   - **System Settings** → **Privacy & Security** → scroll to the bottom
+     → "Confluence was blocked to protect your Mac" → click **Open Anyway**
+     → confirm with Touch ID / password. Then double-click Confluence again
+     and pick **Open** on the follow-up dialog.
+   - **Or, in Terminal**, run once:
+     ```
+     xattr -d com.apple.quarantine /Applications/Confluence.app
+     ```
+     Then double-click as normal.
+
+The app is ad-hoc signed rather than notarised with an Apple Developer ID
+($99/yr), so Gatekeeper doesn't allow the classic right-click → Open bypass
+that older macOS versions had. Subsequent launches (and later versions
+replacing the same bundle) don't re-prompt.
+
+Version and the exact commit the build was cut from are shown in
+**Confluence → About Confluence**.
+
 ## Why Confluence
 
 **🌊 One combined feed.** Posts from Bluesky and Mastodon, merged and sorted by

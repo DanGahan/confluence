@@ -1,0 +1,86 @@
+name: Build release artefact
+description: >
+  Regenerates the Xcode project, builds Confluence in Release with the given
+  MARKETING_VERSION, injects the commit hash into Info.plist, ad-hoc code-signs
+  the bundle, and zips it into ./artefact/Confluence-<version>.zip.
+inputs:
+  version:
+    description: "The marketing version string (becomes CFBundleShortVersionString)."
+    required: true
+  commit:
+    description: "The full git commit SHA the build was made from."
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Select Xcode
+      shell: bash
+      # macOS 26 SDK is required by project.yml (deploymentTarget: 26.0). Use the newest
+      # Xcode the runner has; fall back to /usr/bin/xcodebuild if the selector fails.
+      run: |
+        set -euxo pipefail
+        sudo xcode-select -s /Applications/Xcode.app || true
+        xcodebuild -version
+
+    - name: Install xcodegen
+      shell: bash
+      run: |
+        set -euxo pipefail
+        brew install xcodegen
+
+    - name: Generate Xcode project
+      shell: bash
+      run: xcodegen generate
+
+    - name: Build Release
+      shell: bash
+      env:
+        MARKETING_VERSION: ${{ inputs.version }}
+      # - Release configuration.
+      # - Ad-hoc signing (CODE_SIGN_IDENTITY=-, no team). CI runners don't have our
+      #   local "Confluence Dev" identity, and we're distributing to users without
+      #   an Apple Developer ID, so ad-hoc is the only option.
+      # - Product goes into ./build/Build/Products/Release/Confluence.app so we can
+      #   locate and repackage it deterministically.
+      run: |
+        set -euxo pipefail
+        xcodebuild \
+          -scheme Confluence \
+          -configuration Release \
+          -destination 'platform=macOS' \
+          -derivedDataPath build \
+          MARKETING_VERSION="$MARKETING_VERSION" \
+          CODE_SIGN_STYLE=Manual \
+          CODE_SIGN_IDENTITY=- \
+          CODE_SIGNING_REQUIRED=YES \
+          CODE_SIGNING_ALLOWED=YES \
+          DEVELOPMENT_TEAM= \
+          build
+
+    - name: Inject commit into Info.plist and re-sign
+      shell: bash
+      env:
+        COMMIT: ${{ inputs.commit }}
+      # `plutil -insert` adds the key idempotently; -replace works if it already exists
+      # from a previous unpackaged build. Modifying the bundle invalidates the signature,
+      # so re-sign ad-hoc afterwards (Gatekeeper still requires *some* valid signature).
+      run: |
+        set -euxo pipefail
+        APP="build/Build/Products/Release/Confluence.app"
+        PLIST="$APP/Contents/Info.plist"
+        plutil -remove ConfluenceCommit "$PLIST" 2>/dev/null || true
+        plutil -insert ConfluenceCommit -string "$COMMIT" "$PLIST"
+        codesign --force --deep --sign - "$APP"
+        codesign --verify --deep --strict "$APP"
+
+    - name: Package artefact
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+      run: |
+        set -euxo pipefail
+        mkdir -p artefact
+        ditto -c -k --keepParent \
+          "build/Build/Products/Release/Confluence.app" \
+          "artefact/Confluence-${VERSION}.zip"
+        ls -la artefact/
