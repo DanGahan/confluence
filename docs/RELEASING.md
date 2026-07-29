@@ -45,21 +45,35 @@ the commit the artefact was built from.
 Ad-hoc (`codesign --sign -`). We don't have an Apple Developer ID, so:
 
 - macOS marks the download as "from the internet" (quarantine attribute).
-- On first launch, Gatekeeper blocks with "cannot verify the developer".
-- User right-clicks the app → **Open** → confirms once. macOS remembers.
-
-Alternative for the impatient: `xattr -d com.apple.quarantine
-/Applications/Confluence.app` from Terminal after copying it in.
+- On first launch, Gatekeeper blocks with "Apple could not verify Confluence.app
+  is free of malware that may harm your Mac or compromise your privacy."
+- Since macOS 15, the classic right-click → **Open** bypass is gone for
+  non-notarised apps. Users approve via **System Settings → Privacy & Security
+  → Open Anyway**, or strip the quarantine attribute in Terminal.
 
 The signature is still valid (hardened runtime on, sandbox on) — it's just
-not anchored to Apple's root, so Gatekeeper wants a human ack once.
+not anchored to Apple's root, so Gatekeeper wants a one-time approval that
+proves a human made the choice.
 
 ## Install instructions (paste into a release description if useful)
 
 1. Download `Confluence-<version>.zip` from the release.
 2. Unzip; drag `Confluence.app` to `/Applications`.
-3. First launch only: **right-click** the app → **Open** → **Open** again on
-   the security dialog.
+3. Double-click. Gatekeeper blocks with the "could not verify" dialog — this
+   is expected for any app that isn't notarised.
+4. **Approve once**, either:
+   - **System Settings → Privacy & Security**, scroll to the bottom →
+     "Confluence was blocked to protect your Mac" → **Open Anyway** → confirm
+     with Touch ID / password. Then double-click Confluence and pick **Open**
+     on the follow-up dialog.
+   - Or in Terminal:
+     ```
+     xattr -d com.apple.quarantine /Applications/Confluence.app
+     ```
+     Then double-click as normal.
+
+Subsequent launches (and later versions replacing the same bundle) don't
+re-prompt.
 
 ## Cutting a prod release
 
