@@ -8,6 +8,8 @@ a window.
 
 Your social world split in two. Your attention doesn't have to.
 
+![Confluence screenshot](docs/images/Screenshot.png)
+
 ## Why Confluence
 
 **🌊 One combined feed.** Posts from Bluesky and Mastodon, merged and sorted by
