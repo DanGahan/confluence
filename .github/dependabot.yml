@@ -1,0 +1,15 @@
+version: 2
+updates:
+  # Keeps the actions we reference (actions/checkout, github/codeql-action, etc.)
+  # pinned to current majors. The app itself is zero-dep by policy, so no Swift
+  # package ecosystem here.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "github-actions"
+    # PRs go to `dev` — same flow as every other change.
+    target-branch: "dev"

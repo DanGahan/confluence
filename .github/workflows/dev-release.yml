@@ -14,12 +14,23 @@ concurrency:
 
 permissions:
   contents: write # gh release create
+  security-events: write # CodeQL upload
+  actions: read
 
 jobs:
+  # Gate the release on the shared CI checks (tests + build + CodeQL).
+  ci:
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+
   build:
     # macos-26 provides Swift 6.2 + the macOS 26 SDK that project.yml's
     # deploymentTarget requires. macos-15 has Swift 6.1 and rejects our package.
     runs-on: macos-26
+    needs: ci
     steps:
       - uses: actions/checkout@v4
         with:
@@ -35,9 +46,7 @@ jobs:
           echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           echo "commit_short=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
 
-      - name: Run tests
-        run: swift test --package-path ConfluenceKit
-
+      # Tests + build + CodeQL run in the `ci` job above; no need to repeat here.
       - uses: ./.github/actions/build-release
         with:
           version: ${{ steps.version.outputs.version }}

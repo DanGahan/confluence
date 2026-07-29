@@ -4,6 +4,31 @@ Two tracks: **dev** (automatic on every push to `dev`) and **prod** (manually
 dispatched from `main`). Both produce a downloadable, ad-hoc-signed `.zip` of
 `Confluence.app` on the [Releases page](https://github.com/DanGahan/confluence/releases).
 
+## CI checks (both PR and release paths)
+
+`.github/workflows/ci.yml` runs on every PR (to `dev` or `main`) and on every
+push to `dev`/`main`. Both release workflows call it via `workflow_call`
+before their build step, so a red CI blocks a release. Jobs:
+
+- **Tests (unit + integration)** — `swift test --package-path ConfluenceKit`.
+- **Build (app target, unsigned)** — `xcodebuild build` at Debug with signing
+  disabled. Catches app-target compile regressions that `swift test` on the
+  kit doesn't see.
+- **CodeQL (Swift)** — GitHub's SAST. Findings surface on the Security tab.
+
+Not in CI by design:
+
+- **UI tests** — the XCUITest smoke suite (`xcodebuild test -scheme Confluence`)
+  stays a local pre-merge concern per the pyramid in `CLAUDE.md`. Re-visit if
+  CI-runner flake becomes acceptable.
+- **Notarisation** — needs an Apple Developer ID; we're ad-hoc signed.
+
+Passive checks (no CI change needed):
+
+- **Secret scanning** — GitHub-native, on for public repos.
+- **Dependabot** — `.github/dependabot.yml` opens weekly PRs against `dev`
+  for GitHub Actions updates.
+
 ## Branching model
 
 ```

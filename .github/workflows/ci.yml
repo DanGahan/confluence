@@ -1,0 +1,89 @@
+name: CI
+
+# Runs on every PR to dev/main and every push to dev/main, and is invoked by both
+# release workflows before they build so a bad commit can't cut a release. UI tests
+# stay out of CI by policy (per docs/RELEASING.md → CI checks); they're a
+# pre-merge local concern per CLAUDE.md's pyramid.
+on:
+  pull_request:
+    branches: [dev, main]
+  push:
+    branches: [dev, main]
+  workflow_call:
+
+concurrency:
+  # Cancel superseded PR runs but never cancel pushes to dev/main (release-critical).
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  test-package:
+    name: Tests (unit + integration)
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run ConfluenceKit tests
+        run: swift test --package-path ConfluenceKit
+
+  build-check:
+    name: Build (app target, unsigned)
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install xcodegen
+        run: brew install xcodegen
+      - name: Generate Xcode project
+        run: xcodegen generate
+      # Debug build with signing disabled — catches app-target compile regressions
+      # (which swift test alone doesn't cover) without needing any signing setup.
+      - name: Build
+        run: |
+          set -euxo pipefail
+          xcodebuild \
+            -scheme Confluence \
+            -configuration Debug \
+            -destination 'platform=macOS' \
+            -derivedDataPath build \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY=- \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+  codeql:
+    name: CodeQL (Swift)
+    runs-on: macos-26
+    # Public repos get CodeQL free — see repo Security tab for uploaded alerts.
+    permissions:
+      security-events: write
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install xcodegen
+        run: brew install xcodegen
+      - name: Generate Xcode project
+        run: xcodegen generate
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: swift
+      # CodeQL's Swift extractor observes the compiler; we build without signing
+      # since the goal is to feed source through the analyzer, not ship a binary.
+      - name: Build for CodeQL
+        run: |
+          set -euxo pipefail
+          xcodebuild \
+            -scheme Confluence \
+            -configuration Debug \
+            -destination 'platform=macOS' \
+            -derivedDataPath build \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY=- \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+      - name: Analyze
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: /language:swift
