@@ -14,7 +14,11 @@ before their build step, so a red CI blocks a release. Jobs:
 - **Build (app target, unsigned)** — `xcodebuild build` at Debug with signing
   disabled. Catches app-target compile regressions that `swift test` on the
   kit doesn't see.
-- **CodeQL (Swift)** — GitHub's SAST. Findings surface on the Security tab.
+- **SAST (Semgrep)** — `semgrep --config=p/default` on a Linux runner
+  (source-only, no macOS toolchain needed). Findings surface on the Security
+  tab as SARIF. We tried CodeQL first; its Swift extractor hung >30 min
+  against Swift 6.2 / macOS 26 SDK under both `manual` and `autobuild` modes.
+  Revisit if GitHub ships a working Swift 6.2 extractor.
 
 Not in CI by design:
 

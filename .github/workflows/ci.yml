@@ -50,30 +50,32 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             build
 
-  codeql:
-    name: CodeQL (Swift)
-    runs-on: macos-26
-    # Public repos get CodeQL free — see repo Security tab for uploaded alerts.
+  sast:
+    name: SAST (Semgrep)
+    # Runs on Linux — Semgrep is a source-only scanner, no macOS toolchain needed,
+    # so it's ~10x cheaper than a macOS runner. CodeQL for Swift was tried and
+    # dropped: both build-mode: manual and autobuild hung >30 min on this codebase
+    # against Swift 6.2 / macOS 26 SDK. Semgrep runs in a couple of minutes and
+    # uploads SARIF to the Security tab the same way CodeQL would have.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       security-events: write
-      actions: read
       contents: read
-    # Swift extractor requires an actual build to observe. `none` isn't supported;
-    # our manual xcodebuild hung >30 min. Try `autobuild` (CodeQL's own harness)
-    # with a strict cap so a repeat hang fails fast rather than burning a runner.
-    timeout-minutes: 15
+      actions: read
     steps:
       - uses: actions/checkout@v4
-      - name: Install xcodegen
-        run: brew install xcodegen
-      - name: Generate Xcode project
-        run: xcodegen generate
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
+      - name: Run Semgrep
+        # `p/default` is the curated recommended ruleset (OWASP-style patterns,
+        # secret leaks, common footguns). Non-zero exit on findings blocks CI.
+        # SARIF output is uploaded below so findings surface in Code Scanning.
+        uses: semgrep/semgrep-action@v1
         with:
-          languages: swift
-          build-mode: autobuild
-      - name: Analyze
-        uses: github/codeql-action/analyze@v3
+          config: p/default
+          generateSarif: "1"
+      - name: Upload SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
         with:
-          category: /language:swift
+          sarif_file: semgrep.sarif
+          category: semgrep
