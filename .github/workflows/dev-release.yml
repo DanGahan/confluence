@@ -63,7 +63,9 @@ jobs:
         run: |
           set -euxo pipefail
           TAG="dev-${VERSION}"
-          NOTES=$(cat <<EOF
+          # ponytail: heredoc to a file, not $(cat <<EOF); command
+          # substitution parses the body and chokes on apostrophes (don't).
+          cat > notes.md <<EOF
           Automated dev build.
 
           - **Version**: \`${VERSION}\`
@@ -79,10 +81,9 @@ jobs:
 
           Then double-click as normal. Subsequent launches don't re-prompt.
           EOF
-          )
           gh release create "$TAG" \
             --title "$TAG" \
-            --notes "$NOTES" \
+            --notes-file notes.md \
             --prerelease \
             --target "$GITHUB_SHA" \
             artefact/Confluence-${VERSION}.zip

@@ -89,7 +89,9 @@ jobs:
           COMMIT_SHORT: ${{ steps.version.outputs.commit_short }}
         run: |
           set -euxo pipefail
-          NOTES=$(cat <<EOF
+          # ponytail: heredoc to a file, not $(cat <<EOF); command
+          # substitution parses the body and chokes on apostrophes (don't).
+          cat > notes.md <<EOF
           Prod release.
 
           - **Version**: \`${VERSION}\`
@@ -105,10 +107,9 @@ jobs:
 
           Then double-click as normal. Subsequent launches don't re-prompt.
           EOF
-          )
           gh release create "$VERSION" \
             --title "$VERSION" \
-            --notes "$NOTES" \
+            --notes-file notes.md \
             --latest \
             --target "$GITHUB_SHA" \
             artefact/Confluence-${VERSION}.zip
