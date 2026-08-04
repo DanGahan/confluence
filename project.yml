@@ -22,12 +22,17 @@ targets:
   Confluence:
     type: application
     platform: macOS
-    sources: [Confluence]
+    sources:
+      - Confluence
+      # Icon Composer bundle — compiled straight into the app icon (Xcode 26).
+      # Source art (the SVG layers it references) lives beside it in design/icon.
+      - design/icon/app.icon
     dependencies:
       - package: ConfluenceKit
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.dangahan.confluence
+        ASSETCATALOG_COMPILER_APPICON_NAME: app
         CODE_SIGN_ENTITLEMENTS: Confluence/Confluence.entitlements
         ENABLE_HARDENED_RUNTIME: YES
         # Stable local signing identity so Keychain "Always Allow" persists across rebuilds.
