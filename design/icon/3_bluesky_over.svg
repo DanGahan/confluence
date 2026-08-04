@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="gBsky2" gradientUnits="userSpaceOnUse" x1="0" y1="520" x2="0" y2="630">
+      <stop offset="0" stop-color="#1185FE"/>
+      <stop offset="1" stop-color="#3460E5"/>
+    </linearGradient>
+  </defs>
+  <path d="M556,585 C534,602 512,619 512,640"
+        fill="none" stroke="url(#gBsky2)" stroke-width="130" stroke-linecap="butt"/>
+</svg>
