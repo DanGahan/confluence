@@ -14,6 +14,8 @@ on:
 
 permissions:
   contents: write
+  security-events: write # CodeQL upload
+  actions: read
 
 jobs:
   guard:
@@ -34,12 +36,23 @@ jobs:
             exit 1
           fi
 
-  build:
+  # Gate the release on the shared CI checks (tests + build + CodeQL). Guard runs
+  # first so a wrong-branch or missing-confirm dispatch fails fast before we spend
+  # runner minutes on the check suite.
+  ci:
     needs: guard
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+
+  build:
+    needs: ci
     # macos-26 provides Swift 6.2 + the macOS 26 SDK — see dev-release.yml.
     runs-on: macos-26
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
 
@@ -62,9 +75,7 @@ jobs:
           echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           echo "commit_short=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
 
-      - name: Run tests
-        run: swift test --package-path ConfluenceKit
-
+      # Tests + build + CodeQL run in the `ci` job above; no need to repeat here.
       - uses: ./.github/actions/build-release
         with:
           version: ${{ steps.version.outputs.version }}
@@ -78,7 +89,9 @@ jobs:
           COMMIT_SHORT: ${{ steps.version.outputs.commit_short }}
         run: |
           set -euxo pipefail
-          NOTES=$(cat <<EOF
+          # ponytail: heredoc to a file, not $(cat <<EOF); command
+          # substitution parses the body and chokes on apostrophes (don't).
+          cat > notes.md <<EOF
           Prod release.
 
           - **Version**: \`${VERSION}\`
@@ -94,10 +107,9 @@ jobs:
 
           Then double-click as normal. Subsequent launches don't re-prompt.
           EOF
-          )
           gh release create "$VERSION" \
             --title "$VERSION" \
-            --notes "$NOTES" \
+            --notes-file notes.md \
             --latest \
             --target "$GITHUB_SHA" \
             artefact/Confluence-${VERSION}.zip
