@@ -16,9 +16,10 @@ before their build step, so a red CI blocks a release. Jobs:
   kit doesn't see.
 - **SAST (Semgrep)** — `semgrep --config=p/default` on a Linux runner
   (source-only, no macOS toolchain needed). Findings surface on the Security
-  tab as SARIF. We tried CodeQL first; its Swift extractor hung >30 min
-  against Swift 6.2 / macOS 26 SDK under both `manual` and `autobuild` modes.
-  Revisit if GitHub ships a working Swift 6.2 extractor.
+  tab as SARIF. Semgrep owns **Swift** scanning: we tried CodeQL first, but its
+  Swift extractor hung >30 min against Swift 6.2 / macOS 26 SDK under both
+  `manual` and `autobuild` modes. Revisit if GitHub ships a working Swift 6.2
+  extractor.
 
 Not in CI by design:
 
@@ -29,6 +30,12 @@ Not in CI by design:
 
 Passive checks (no CI change needed):
 
+- **CodeQL default setup (Actions only)** — GitHub-native, scans workflow
+  files for Actions misconfig (e.g. unpinned tokens / missing `permissions`).
+  Runs on `main` + PRs, uploads to the Security tab. Scoped to `actions` on
+  purpose: Swift is Semgrep's job (the CodeQL Swift extractor is the one that
+  hung, above), so leaving Swift in default setup was redundant and re-ran the
+  flaky path.
 - **Secret scanning** — GitHub-native, on for public repos.
 - **Dependabot** — `.github/dependabot.yml` opens weekly PRs against `dev`
   for GitHub Actions updates.
