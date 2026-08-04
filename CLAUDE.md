@@ -60,6 +60,7 @@ Rules: never call the real APIs from tests; every bug fix starts with a test rep
 
 - Work is GitHub issues on the [Confluence project board](https://github.com/users/DanGahan/projects/4) (New → In Progress → In QA → Done, plus Blocked). Every issue goes on the board. Move status with `gh` as you go; note blockers on the issue.
 - Small vertical slices: one SPEC feature (or sub-bullet) per PR.
+- **PRs target `dev`, not `main`.** `main` is the prod-release track and is protected — direct pushes and unpromoted PRs are rejected. `dev` gets an auto-release on every push; a manual `dev → main` promotion PR cuts prod. Full model + diagram in [`docs/RELEASING.md`](docs/RELEASING.md).
 - If a spec ambiguity blocks you, note the interpretation you chose in the PR rather than stalling.
 
 ## Commands
