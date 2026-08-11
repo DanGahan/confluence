@@ -29,7 +29,8 @@ struct AuthorLabel: View {
 private struct QuickReply: ViewModifier {
     let item: FeedItem
     @Environment(PostActionStore.self) private var postActions
-    @State private var expanded = false
+    /// Owned by the host row so its context menu can open the box too, not just the body tap.
+    @Binding var expanded: Bool
     @State private var text = ""
     @State private var posting = false
     @State private var errorMessage: String?
@@ -51,18 +52,29 @@ private struct QuickReply: ViewModifier {
                 // Invisible-but-hittable backing (not .contentShape) so links keep their
                 // pointing-hand hover — same trick as elsewhere in the feed.
                 .background(Color.black.opacity(0.001))
-                .onTapGesture { toggle() }
+                .onTapGesture { withAnimation(.snappy(duration: 0.2)) { expanded.toggle() } }
             if expanded { replyField }
+        }
+        // Focus on open, clear on close — covers both the body tap and the context-menu item.
+        .onChange(of: expanded) { _, isOpen in
+            if isOpen { fieldFocused = true }
+            else { text = ""; errorMessage = nil; posting = false }
         }
     }
 
     private var replyField: some View {
         VStack(alignment: .leading, spacing: 6) {
-            TextField("Reply on \(networkName)…", text: $text, axis: .vertical)
+            // Single-line, fixed-height field. A vertical-growth TextField (axis: .vertical)
+            // renegotiates its intrinsic height against the enclosing LazyVStack every layout
+            // pass, which blows sizeThatFits up exponentially and beachballs the feed — so we
+            // keep the field's height fixed. ponytail: multiline growth would need a
+            // fixed-frame TextEditor, not axis: .vertical, inside the lazy row.
+            TextField("Reply on \(networkName)…", text: $text)
                 .textFieldStyle(.roundedBorder)
-                .lineLimit(1...6)
+                .lineLimit(1)
                 .focused($fieldFocused)
                 .disabled(posting)
+                .onSubmit { if canPost { send() } }
                 .accessibilityLabel("Reply text")
             if let errorMessage {
                 Text(errorMessage).font(.caption).foregroundStyle(.red)
@@ -81,17 +93,11 @@ private struct QuickReply: ViewModifier {
             }
         }
         .padding(.leading, 54) // line up under the post text, past the 44pt avatar + spacing
-        .transition(.opacity.combined(with: .move(edge: .top)))
-    }
-
-    private func toggle() {
-        withAnimation(.snappy(duration: 0.2)) { expanded.toggle() }
-        if expanded { fieldFocused = true } else { collapse() }
+        .transition(.opacity) // opacity only; a .move transition thrashes layout in a LazyVStack
     }
 
     private func collapse() {
-        withAnimation(.snappy(duration: 0.2)) { expanded = false }
-        text = ""; errorMessage = nil; posting = false
+        withAnimation(.snappy(duration: 0.2)) { expanded = false } // onChange clears the fields
     }
 
     private func send() {
@@ -112,6 +118,9 @@ private struct QuickReply: ViewModifier {
 }
 
 extension View {
-    /// Make a post row expand an inline reply box when its body is clicked.
-    func quickReply(_ item: FeedItem) -> some View { modifier(QuickReply(item: item)) }
+    /// Make a post row expand an inline reply box. `expanded` is owned by the row so its
+    /// context menu can also open the box (via a "Reply" item), not just a body tap.
+    func quickReply(_ item: FeedItem, expanded: Binding<Bool>) -> some View {
+        modifier(QuickReply(item: item, expanded: expanded))
+    }
 }

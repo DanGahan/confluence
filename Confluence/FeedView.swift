@@ -386,6 +386,7 @@ struct FeedRow: View {
     let item: FeedItem
     @State private var showingProfile = false
     @State private var showingThread = false
+    @State private var replyExpanded = false
     @State private var lightbox: LightboxItem?
     @State private var confirmingBlock = false
     @State private var confirmingDelete = false
@@ -458,7 +459,7 @@ struct FeedRow: View {
         // Click the post body (chrome/text — avatar, username, media, links and the "N replies"
         // button consume their own clicks) to expand an inline reply box. quickReply also
         // provides the invisible hittable backing right-click needs on the row's gaps.
-        .quickReply(item)
+        .quickReply(item, expanded: $replyExpanded)
         .contextMenu { postMenu }
         .confirmationDialog("Block @\(item.authorHandle)?", isPresented: $confirmingBlock, titleVisibility: .visible) {
             Button("Block", role: .destructive) { Task { await postActions.block(item) } }
@@ -479,6 +480,8 @@ struct FeedRow: View {
     }
 
     @ViewBuilder private var postMenu: some View {
+        Button("Reply", systemImage: "arrowshape.turn.up.left") { replyExpanded = true }
+        Divider()
         Button(postActions.isReposted(item) ? "Undo Repost" : "Repost", systemImage: "arrow.2.squarepath") {
             Task { await postActions.toggleRepost(item) }
         }

@@ -92,6 +92,7 @@ private struct ThreadPostRow: View {
     let post: FeedItem
     let isFocus: Bool
     @State private var showingProfile = false
+    @State private var replyExpanded = false
 
     private var isFollowing: Bool { follows.isFollowing(post) }
     private var networkName: String { post.network == .bluesky ? "Bluesky" : "Mastodon" }
@@ -137,8 +138,10 @@ private struct ThreadPostRow: View {
         .padding(.vertical, 8)
         .padding(.horizontal, isFocus ? 8 : 0)
         .background(isFocus ? Color.accentColor.opacity(0.10) : .clear, in: RoundedRectangle(cornerRadius: 8))
-        .quickReply(post)
+        .quickReply(post, expanded: $replyExpanded)
         .contextMenu {
+            Button("Reply", systemImage: "arrowshape.turn.up.left") { replyExpanded = true }
+            Divider()
             Button(followLabel, systemImage: isFollowing ? "person.badge.minus" : "person.badge.plus") {
                 Task { await follows.toggle(post) }
             }
