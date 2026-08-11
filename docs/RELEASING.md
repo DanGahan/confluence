@@ -111,6 +111,35 @@ proves a human made the choice.
 Subsequent launches (and later versions replacing the same bundle) don't
 re-prompt.
 
+## Homebrew
+
+Both tracks are also installable via a Homebrew tap,
+[`DanGahan/homebrew-confluence`](https://github.com/DanGahan/homebrew-confluence)
+(separate repo — Homebrew requires the `homebrew-` name prefix, and its
+auto-update bot commits to its own `main` rather than ours):
+
+```sh
+brew tap DanGahan/confluence
+brew install --cask confluence          # prod (latest release)
+brew install --cask confluence@dev       # dev prerelease track
+```
+
+Because the app is ad-hoc signed, first launch still hits Gatekeeper. Homebrew
+**removed `--no-quarantine`** (its old bypass), so the tap's caveats tell users
+to clear quarantine once after install:
+
+```sh
+xattr -r -d com.apple.quarantine "/Applications/Confluence.app"
+```
+
+The tap needs no manual bumping: a workflow in the tap repo polls this repo's
+releases hourly and commits the refreshed `version` + `sha256` into each cask.
+
+> **⚠️ Expiry (1 Sep 2026):** Homebrew is ending support for casks that fail
+> Gatekeeper checks. Confluence fails by definition until it's **notarised**
+> (Apple Developer ID). The `xattr` workaround is a stopgap until then;
+> notarisation is the real fix and removes the workaround entirely.
+
 ## Cutting a prod release
 
 1. Confirm `main` is behind `dev` and everything you want to ship is on `dev`.
