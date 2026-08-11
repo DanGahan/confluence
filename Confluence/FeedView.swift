@@ -421,8 +421,7 @@ struct FeedRow: View {
                         .foregroundStyle(.secondary)
                 }
                 HStack(spacing: 6) {
-                    Text(item.authorName).fontWeight(.semibold).lineLimit(1)
-                    Text("@\(item.authorHandle)").foregroundStyle(.secondary).lineLimit(1)
+                    AuthorLabel(item: item)
                     Spacer(minLength: 4)
                     networkBadge
                     Text(item.createdAt, format: .relative(presentation: .named))
@@ -456,13 +455,10 @@ struct FeedRow: View {
             }
         }
         .padding(.vertical, 4)
-        // Hittable-but-invisible backing so right-click works on the row's gaps too. Using a
-        // background (not .contentShape) keeps SwiftUI from owning the cursor, so the text
-        // view's pointing-hand hover over links still wins.
-        .background(Color.black.opacity(0.001))
-        // Click the post (chrome/text — links, avatar, images consume their own clicks) to open
-        // its thread, same as the "Show thread" affordance.
-        .onTapGesture { if item.hasThread { showingThread = true } }
+        // Click the post body (chrome/text — avatar, username, media, links and the "N replies"
+        // button consume their own clicks) to expand an inline reply box. quickReply also
+        // provides the invisible hittable backing right-click needs on the row's gaps.
+        .quickReply(item)
         .contextMenu { postMenu }
         .confirmationDialog("Block @\(item.authorHandle)?", isPresented: $confirmingBlock, titleVisibility: .visible) {
             Button("Block", role: .destructive) { Task { await postActions.block(item) } }

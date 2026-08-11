@@ -111,8 +111,7 @@ private struct ThreadPostRow: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
-                    Text(post.authorName).fontWeight(.semibold).lineLimit(1)
-                    Text("@\(post.authorHandle)").foregroundStyle(.secondary).lineLimit(1)
+                    AuthorLabel(item: post)
                     Spacer(minLength: 4)
                     NetworkBadge(network: post.network)
                     Text(post.createdAt, format: .relative(presentation: .named))
@@ -138,6 +137,7 @@ private struct ThreadPostRow: View {
         .padding(.vertical, 8)
         .padding(.horizontal, isFocus ? 8 : 0)
         .background(isFocus ? Color.accentColor.opacity(0.10) : .clear, in: RoundedRectangle(cornerRadius: 8))
+        .quickReply(post)
         .contextMenu {
             Button(followLabel, systemImage: isFollowing ? "person.badge.minus" : "person.badge.plus") {
                 Task { await follows.toggle(post) }

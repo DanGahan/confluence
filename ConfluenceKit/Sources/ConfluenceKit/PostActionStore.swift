@@ -13,19 +13,33 @@ public struct PostActions: Sendable {
     public let unlike: @Sendable (FeedItem, _ recordURI: String?) async throws -> Void
     public let block: @Sendable (FeedItem) async throws -> Void
     public let delete: @Sendable (FeedItem) async throws -> Void
+    /// Post a reply to `FeedItem` with the given text, using the item's network account.
+    public let reply: @Sendable (FeedItem, _ text: String) async throws -> Void
 
     public init(repost: @escaping @Sendable (FeedItem) async throws -> String?,
                 unrepost: @escaping @Sendable (FeedItem, String?) async throws -> Void,
                 like: @escaping @Sendable (FeedItem) async throws -> String?,
                 unlike: @escaping @Sendable (FeedItem, String?) async throws -> Void,
                 block: @escaping @Sendable (FeedItem) async throws -> Void,
-                delete: @escaping @Sendable (FeedItem) async throws -> Void) {
+                delete: @escaping @Sendable (FeedItem) async throws -> Void,
+                reply: @escaping @Sendable (FeedItem, String) async throws -> Void) {
         self.repost = repost
         self.unrepost = unrepost
         self.like = like
         self.unlike = unlike
         self.block = block
         self.delete = delete
+        self.reply = reply
+    }
+}
+
+/// Errors surfaced by post actions that need to reach the UI directly (not via the toast).
+public enum PostActionError: LocalizedError {
+    case notLoggedIn
+    public var errorDescription: String? {
+        switch self {
+        case .notLoggedIn: "You're not signed in to that network."
+        }
     }
 }
 
@@ -122,6 +136,13 @@ public final class PostActionStore {
         } catch {
             lastError = (error as? LocalizedError)?.errorDescription ?? "Couldn't delete. Please try again."
         }
+    }
+
+    /// Post a reply to `item`. Throws so the inline reply box shows its own error and stays
+    /// open on failure (unlike the toast-based toggles above).
+    public func reply(_ item: FeedItem, text: String) async throws {
+        guard let action = actions[item.network] else { throw PostActionError.notLoggedIn }
+        try await action.reply(item, text)
     }
 
     private func run(_ item: FeedItem, add key: String, to set: ReferenceWritableKeyPath<PostActionStore, Set<String>>,

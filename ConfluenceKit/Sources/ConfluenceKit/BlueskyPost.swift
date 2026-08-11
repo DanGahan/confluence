@@ -25,12 +25,19 @@ extension BlueskyClient {
     /// `images` pairs each uploaded blob (returned by `uploadImage`) with its alt description
     /// (empty string is allowed and posts as no description).
     public func post(accessToken: String, repoDID: String, text: String,
-                     images: [(blob: Data, alt: String)] = []) async throws -> String {
+                     images: [(blob: Data, alt: String)] = [],
+                     replyTo: (uri: String, cid: String)? = nil) async throws -> String {
         var record: [String: Any] = [
             "$type": "app.bsky.feed.post",
             "text": text,
             "createdAt": ISO8601DateFormatter().string(from: Date()),
         ]
+        if let replyTo {
+            // ponytail: root == parent — correct for a top-level post, mis-roots a reply to a
+            // mid-thread post. We'd need the thread root's cid (an extra fetch) to do it right.
+            let ref = ["uri": replyTo.uri, "cid": replyTo.cid]
+            record["reply"] = ["root": ref, "parent": ref]
+        }
         if !images.isEmpty {
             let embeds = try images.map { image in
                 ["alt": image.alt, "image": try JSONSerialization.jsonObject(with: image.blob)]

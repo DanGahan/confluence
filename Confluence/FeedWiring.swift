@@ -85,6 +85,13 @@ struct FeedWiring {
                 },
                 delete: { item in
                     try await store.withFreshSession { try await client.deletePost(accessToken: $0.accessJwt, uri: item.rawId) }
+                },
+                reply: { item, text in
+                    guard let cid = item.cid else { throw PostActionError.notLoggedIn }
+                    _ = try await store.withFreshSession {
+                        try await client.post(accessToken: $0.accessJwt, repoDID: $0.did, text: text,
+                                              replyTo: (uri: item.rawId, cid: cid))
+                    }
                 }
             )
         }
@@ -96,7 +103,8 @@ struct FeedWiring {
                 like: { item in try await client.favourite(host: session.host, accessToken: session.accessToken, statusID: item.threadID); return nil },
                 unlike: { item, _ in try await client.unfavourite(host: session.host, accessToken: session.accessToken, statusID: item.threadID) },
                 block: { item in try await client.block(host: session.host, accessToken: session.accessToken, accountID: item.authorID) },
-                delete: { item in try await client.deletePost(host: session.host, accessToken: session.accessToken, statusID: item.threadID) }
+                delete: { item in try await client.deletePost(host: session.host, accessToken: session.accessToken, statusID: item.threadID) },
+                reply: { item, text in try await client.post(host: session.host, accessToken: session.accessToken, text: text, inReplyToID: item.threadID) }
             )
         }
         return actions

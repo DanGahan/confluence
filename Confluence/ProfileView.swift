@@ -158,6 +158,7 @@ private struct ProfilePostRow: View {
             Divider()
         }
         .padding(.vertical, 4)
+        .quickReply(post)
         .sheet(isPresented: $showingThread) { ThreadView(item: post) }
         .sheet(item: $lightbox) { ImageLightbox(item: $0) }
     }
