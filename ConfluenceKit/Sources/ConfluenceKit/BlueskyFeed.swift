@@ -168,6 +168,7 @@ extension BlueskyClient {
                 replyCount: replyCount ?? 0,
                 isReply: record.reply != nil,
                 cid: cid,
+                replyRoot: record.reply?.root.map { PostRef(uri: $0.uri, cid: $0.cid) },
                 postURL: webURL
             )
         }
@@ -210,7 +211,12 @@ extension BlueskyClient {
         let facets: [Facet]?
         let reply: Reply?
     }
-    private struct Reply: Decodable {} // presence marks this post as a reply
+    /// When present, the post is a reply; `root` is the thread's root post — needed so a reply
+    /// *to* this post is rooted at the conversation, not at a mid-thread post.
+    private struct Reply: Decodable {
+        let root: StrongRef?
+    }
+    private struct StrongRef: Decodable { let uri: String; let cid: String }
     private struct Facet: Decodable {
         let index: FacetIndex
         let features: [FacetFeature]

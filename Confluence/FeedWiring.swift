@@ -88,9 +88,13 @@ struct FeedWiring {
                 },
                 reply: { item, text in
                     guard let cid = item.cid else { throw PostActionError.notLoggedIn }
+                    let parent = PostRef(uri: item.rawId, cid: cid)
+                    // Root the reply at the conversation: the post's own thread root if it's a
+                    // reply, else the post itself (a top-level post is its own root).
+                    let root = item.replyRoot ?? parent
                     _ = try await store.withFreshSession {
                         try await client.post(accessToken: $0.accessJwt, repoDID: $0.did, text: text,
-                                              replyTo: (uri: item.rawId, cid: cid))
+                                              reply: (parent: parent, root: root))
                     }
                 }
             )

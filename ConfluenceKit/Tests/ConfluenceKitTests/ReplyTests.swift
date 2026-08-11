@@ -3,7 +3,8 @@ import Foundation
 @testable import ConfluenceKit
 
 struct ReplyTests {
-    @Test func blueskyReplyBuildsParentAndRootStrongRefs() async throws {
+    @Test func blueskyReplyRootsAtConversationNotParent() async throws {
+        // Replying to a mid-thread post: parent is that post, root is the distinct thread root.
         let client = BlueskyClient(session: MockURLProtocol.session { request in
             #expect(request.url?.path == "/xrpc/com.atproto.repo.createRecord")
             let body = try JSONSerialization.jsonObject(with: MockURLProtocol.body(of: request)) as! [String: Any]
@@ -12,15 +13,15 @@ struct ReplyTests {
             let reply = record["reply"] as! [String: Any]
             let parent = reply["parent"] as! [String: Any]
             let root = reply["root"] as! [String: Any]
-            #expect(parent["uri"] as? String == "at://did:them/app.bsky.feed.post/abc")
-            #expect(parent["cid"] as? String == "bafyparent")
-            // ponytail ceiling: root == parent (no true root cid without a fetch).
-            #expect(root["uri"] as? String == "at://did:them/app.bsky.feed.post/abc")
-            #expect(root["cid"] as? String == "bafyparent")
+            #expect(parent["uri"] as? String == "at://did:them/app.bsky.feed.post/mid")
+            #expect(parent["cid"] as? String == "bafymid")
+            #expect(root["uri"] as? String == "at://did:them/app.bsky.feed.post/root")
+            #expect(root["cid"] as? String == "bafyroot")
             return (request.status(200), #"{"uri":"at://did:me/app.bsky.feed.post/xyz"}"#.data(using: .utf8)!)
         })
         _ = try await client.post(accessToken: "t", repoDID: "did:me", text: "nice one",
-                                  replyTo: (uri: "at://did:them/app.bsky.feed.post/abc", cid: "bafyparent"))
+                                  reply: (parent: PostRef(uri: "at://did:them/app.bsky.feed.post/mid", cid: "bafymid"),
+                                          root: PostRef(uri: "at://did:them/app.bsky.feed.post/root", cid: "bafyroot")))
     }
 
     @Test func blueskyNoReplyOmitsReplyField() async throws {

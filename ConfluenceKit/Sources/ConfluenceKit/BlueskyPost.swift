@@ -26,17 +26,17 @@ extension BlueskyClient {
     /// (empty string is allowed and posts as no description).
     public func post(accessToken: String, repoDID: String, text: String,
                      images: [(blob: Data, alt: String)] = [],
-                     replyTo: (uri: String, cid: String)? = nil) async throws -> String {
+                     reply: (parent: PostRef, root: PostRef)? = nil) async throws -> String {
         var record: [String: Any] = [
             "$type": "app.bsky.feed.post",
             "text": text,
             "createdAt": ISO8601DateFormatter().string(from: Date()),
         ]
-        if let replyTo {
-            // ponytail: root == parent — correct for a top-level post, mis-roots a reply to a
-            // mid-thread post. We'd need the thread root's cid (an extra fetch) to do it right.
-            let ref = ["uri": replyTo.uri, "cid": replyTo.cid]
-            record["reply"] = ["root": ref, "parent": ref]
+        if let reply {
+            record["reply"] = [
+                "parent": ["uri": reply.parent.uri, "cid": reply.parent.cid],
+                "root": ["uri": reply.root.uri, "cid": reply.root.cid],
+            ]
         }
         if !images.isEmpty {
             let embeds = try images.map { image in

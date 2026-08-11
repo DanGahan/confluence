@@ -24,8 +24,8 @@ authoritative in-place markers), the SPEC, and open bug issues. When you add a
 | G8 | Keychain falls back to legacy keychain on `errSecMissingEntitlement` (unsigned dev builds only) | `Keychain.swift` | Delete the fallback once builds are signed with a real team |
 | G9 | `LinkClickRouter` consumes mouse-down on link glyphs, so a drag-select can't *start* on a link | `RichTextLabel.swift` | Only if users report it; accepted trade for working links |
 | G10 | No offline cache — feed is refetched every launch; SwiftData cache is the named path | SPEC decision | Only if offline reading is requested |
-| G14 | Quick reply (Bluesky) sets the reply record's `root` = `parent` — correct for a top-level post, mis-roots a reply to a *mid-thread* post (we lack the thread root's cid without an extra fetch) | `BlueskyPost.swift` (`post`, `replyTo`) | If mis-threaded replies surface; fetch/carry the true root ref |
-| G15 | Quick reply has no optimistic insert and no character counter — box collapses on success (next refresh shows the reply); over-limit text is rejected by the API and shown as an inline error | `QuickReply.swift` | If users want the reply to appear instantly or a live counter |
+| ~~G14~~ | ~~Quick reply (Bluesky) sets `root` = `parent`, mis-rooting a reply to a mid-thread post~~ — **repaid.** The timeline already carries `record.reply.root`; captured as `FeedItem.replyRoot` and used so replies root at the conversation. | `BlueskyFeed.swift`, `BlueskyPost.swift` | Done (#152) |
+| G15 | Quick reply has no optimistic insert — box collapses on success and the next refresh shows the reply. (Character counter repaid: Bluesky 300 hard cap, Mastodon 500 soft guide.) | `QuickReply.swift` | If users want the reply to appear instantly; means splicing the new post into live feed/thread state |
 
 ## Structural debt
 

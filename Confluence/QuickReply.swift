@@ -36,7 +36,14 @@ private struct QuickReply: ViewModifier {
     @FocusState private var fieldFocused: Bool
 
     private var networkName: String { item.network == .bluesky ? "Bluesky" : "Mastodon" }
-    private var canPost: Bool { !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !posting }
+    private var limit: Int { item.network.defaultCharacterLimit }
+    private var overLimit: Bool { text.count > limit }
+    /// Only Bluesky's cap is firm enough to block on; Mastodon over-limit is a soft warning
+    /// (instances vary — the server rejects if it's genuinely too long).
+    private var overHardLimit: Bool { item.network.isHardCharacterLimit && overLimit }
+    private var canPost: Bool {
+        !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !posting && !overHardLimit
+    }
 
     func body(content: Content) -> some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -61,6 +68,10 @@ private struct QuickReply: ViewModifier {
                 Text(errorMessage).font(.caption).foregroundStyle(.red)
             }
             HStack(spacing: 8) {
+                Text("\(text.count)/\(limit)")
+                    .font(.caption).monospacedDigit()
+                    .foregroundStyle(overLimit ? .red : .secondary)
+                    .accessibilityLabel("\(text.count) of \(limit) characters")
                 Spacer()
                 Button("Cancel") { collapse() }.disabled(posting)
                 Button("Reply") { send() }
@@ -90,7 +101,7 @@ private struct QuickReply: ViewModifier {
             do {
                 try await postActions.reply(item, text: text.trimmingCharacters(in: .whitespacesAndNewlines))
                 // ponytail: no optimistic insert — collapse and let the next refresh show the
-                // reply. Also no live character counter; over-limit is caught by the API below.
+                // reply. Adding one means splicing the new post into the live feed/thread state.
                 collapse()
             } catch {
                 errorMessage = (error as? LocalizedError)?.errorDescription ?? "Couldn't post reply. Please try again."
