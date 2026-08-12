@@ -25,12 +25,19 @@ extension BlueskyClient {
     /// `images` pairs each uploaded blob (returned by `uploadImage`) with its alt description
     /// (empty string is allowed and posts as no description).
     public func post(accessToken: String, repoDID: String, text: String,
-                     images: [(blob: Data, alt: String)] = []) async throws -> String {
+                     images: [(blob: Data, alt: String)] = [],
+                     reply: (parent: PostRef, root: PostRef)? = nil) async throws -> String {
         var record: [String: Any] = [
             "$type": "app.bsky.feed.post",
             "text": text,
             "createdAt": ISO8601DateFormatter().string(from: Date()),
         ]
+        if let reply {
+            record["reply"] = [
+                "parent": ["uri": reply.parent.uri, "cid": reply.parent.cid],
+                "root": ["uri": reply.root.uri, "cid": reply.root.cid],
+            ]
+        }
         if !images.isEmpty {
             let embeds = try images.map { image in
                 ["alt": image.alt, "image": try JSONSerialization.jsonObject(with: image.blob)]

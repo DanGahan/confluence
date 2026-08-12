@@ -40,6 +40,48 @@ struct FeedDecodingTests {
         #expect(item.followURI == "at://did:plc:me/app.bsky.graph.follow/xyz")
     }
 
+    @Test func blueskyReplyCapturesThreadRootRef() async throws {
+        // A reply post carries record.reply.root (the conversation root) — captured so a reply
+        // *to* this post is rooted at the thread, not at this mid-thread post.
+        let json = """
+        {
+          "feed": [{
+            "post": {
+              "uri": "at://did/app.bsky.feed.post/mid",
+              "cid": "bafymid",
+              "author": {"did": "did:plc:alice", "handle": "alice.bsky.social"},
+              "record": {
+                "text": "a mid-thread reply",
+                "createdAt": "2026-07-01T10:00:00.000Z",
+                "reply": {
+                  "root": {"uri": "at://did/app.bsky.feed.post/root", "cid": "bafyroot"},
+                  "parent": {"uri": "at://did/app.bsky.feed.post/above", "cid": "bafyabove"}
+                }
+              }
+            }
+          }]
+        }
+        """.data(using: .utf8)!
+        let client = BlueskyClient(session: MockURLProtocol.session { ($0.status(200), json) })
+        let item = try #require(try await client.timeline(accessToken: "t", cursor: nil).items.first)
+        #expect(item.isReply == true)
+        #expect(item.replyRoot == PostRef(uri: "at://did/app.bsky.feed.post/root", cid: "bafyroot"))
+    }
+
+    @Test func blueskyTopLevelPostHasNoReplyRoot() async throws {
+        let json = """
+        {"feed": [{"post": {
+          "uri": "at://did/app.bsky.feed.post/top", "cid": "bafytop",
+          "author": {"did": "did:plc:a", "handle": "a.bsky.social"},
+          "record": {"text": "top level", "createdAt": "2026-07-01T10:00:00.000Z"}
+        }}]}
+        """.data(using: .utf8)!
+        let client = BlueskyClient(session: MockURLProtocol.session { ($0.status(200), json) })
+        let item = try #require(try await client.timeline(accessToken: "t", cursor: nil).items.first)
+        #expect(item.isReply == false)
+        #expect(item.replyRoot == nil)
+    }
+
     @Test func decodesBlueskyExternalEmbedAsLinkCard() async throws {
         // A link-only post: empty text, an external embed carries the content (bridged accounts).
         let json = """

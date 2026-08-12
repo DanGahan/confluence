@@ -117,6 +117,7 @@ private struct ProfilePostRow: View {
     @AppStorage(PostAppearance.linkColorKey) private var linkColorHex = PostAppearance.defaultLinkColorHex
     let post: FeedItem
     @State private var showingThread = false
+    @State private var replyExpanded = false
     @State private var lightbox: LightboxItem?
     private var threadLabel: String {
         switch post.replyCount {
@@ -158,6 +159,10 @@ private struct ProfilePostRow: View {
             Divider()
         }
         .padding(.vertical, 4)
+        .quickReply(post, expanded: $replyExpanded)
+        .contextMenu {
+            Button("Reply", systemImage: "arrowshape.turn.up.left") { replyExpanded = true }
+        }
         .sheet(isPresented: $showingThread) { ThreadView(item: post) }
         .sheet(item: $lightbox) { ImageLightbox(item: $0) }
     }

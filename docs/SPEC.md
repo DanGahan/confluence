@@ -75,6 +75,12 @@ A native macOS app showing a combined Bluesky + Mastodon feed. Inspired by Indig
 - Window freely resizable, min 480×600. Feed column caps at a comfortable reading width (~600 pt) centered when wider.
 - Layout uses adaptive SwiftUI containers — nothing may truncate or overlap at min size. Window frame restored on relaunch (system-provided).
 
+### F14 — Inline quick reply
+- Clicking a post's body expands the row to reveal an inline reply text field + Reply button; clicking again (or Cancel) collapses it. Works everywhere posts render: feed, thread, profile, search.
+- Excluded from the expand-click (they keep their own action): avatar and username/handle (open profile), images (lightbox), video (play), links (open), and the "N replies" button (opens the thread — the only thread affordance).
+- Reply posts to the network the original came from, using that account, attached as a reply (Bluesky reply record; Mastodon `in_reply_to_id`). On success the box collapses and clears; on failure it stays open with an inline error.
+- Reply field + Reply button carry VoiceOver labels; empty text disables Reply.
+
 ## Non-functional requirements
 
 - Feed merge of 200 posts must complete in < 50 ms (unit-tested).
