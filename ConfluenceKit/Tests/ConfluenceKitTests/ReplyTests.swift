@@ -54,3 +54,15 @@ struct ReplyTests {
         try await client.post(host: "mastodon.social", accessToken: "t", text: "top level")
     }
 }
+
+struct BlueskyResolveHandleTests {
+    @Test func resolveHandleReturnsDID() async throws {
+        let client = BlueskyClient(session: MockURLProtocol.session { request in
+            #expect(request.url?.path == "/xrpc/com.atproto.identity.resolveHandle")
+            #expect(request.url?.query?.contains("handle=lisaocarroll.bsky.social") == true)
+            return (request.status(200), #"{"did":"did:plc:lisa"}"#.data(using: .utf8)!)
+        })
+        let did = try await client.resolveHandle(accessToken: "t", handle: "lisaocarroll.bsky.social")
+        #expect(did == "did:plc:lisa")
+    }
+}

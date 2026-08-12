@@ -1,6 +1,16 @@
 import Foundation
 
 extension BlueskyClient {
+    /// `com.atproto.identity.resolveHandle` — a handle → its DID, needed to build the `at://`
+    /// URI for a post opened from a bsky.app web link.
+    public func resolveHandle(accessToken: String, handle: String) async throws -> String {
+        let data = try await xrpcGet(accessToken: accessToken, method: "com.atproto.identity.resolveHandle",
+                                     items: [URLQueryItem(name: "handle", value: handle)])
+        struct Resolved: Decodable { let did: String }
+        guard let resolved = try? JSONDecoder().decode(Resolved.self, from: data) else { throw BlueskyError.malformedResponse }
+        return resolved.did
+    }
+
     /// `app.bsky.actor.getProfile`
     public func profile(accessToken: String, actor: String) async throws -> Profile {
         let data = try await xrpcGet(accessToken: accessToken, method: "app.bsky.actor.getProfile",

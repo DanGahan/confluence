@@ -27,8 +27,10 @@ private enum LinkSheet: Identifiable {
 /// opens in the default browser.
 private struct ProfileLinkHandler: ViewModifier {
     @Environment(MastodonAccountStore.self) private var mastodon
+    @Environment(BlueskyAccountStore.self) private var bluesky
     @State private var sheet: LinkSheet?
     @State private var resolvingStatus: URL?
+    @State private var resolvingBlueskyPost: URL?
 
     func body(content: Content) -> some View {
         content
@@ -39,6 +41,12 @@ private struct ProfileLinkHandler: ViewModifier {
                 }
                 if let handle = ProfileLink.blueskyWebProfileHandle(url) {
                     sheet = .profile(ProfileTarget(network: .bluesky, accountID: handle, handle: handle))
+                    return .handled
+                }
+                // A bsky.app post permalink → open its thread in-app. Needs a Bluesky session
+                // to resolve the handle to a DID; without one, fall through to the browser.
+                if bluesky.isLoggedIn, ProfileLink.blueskyWebPostRef(url) != nil {
+                    resolvingBlueskyPost = url
                     return .handled
                 }
                 // A Mastodon status permalink → open its thread in-app. Needs a Mastodon
@@ -55,6 +63,7 @@ private struct ProfileLinkHandler: ViewModifier {
                 return .handled
             })
             .task(id: resolvingStatus) { await resolveStatus() }
+            .task(id: resolvingBlueskyPost) { await resolveBlueskyPost() }
             .sheet(item: $sheet) { s in
                 switch s {
                 case .profile(let t): ProfileView(network: t.network, authorID: t.accountID, handle: t.handle)
@@ -74,6 +83,25 @@ private struct ProfileLinkHandler: ViewModifier {
             NSWorkspace.shared.open(url) // couldn't resolve it — open normally
         }
         resolvingStatus = nil
+    }
+
+    /// Resolves a tapped bsky.app post URL to an `at://` URI (handle → DID) and opens its
+    /// thread. Falls back to the browser if the handle can't be resolved.
+    private func resolveBlueskyPost() async {
+        guard let url = resolvingBlueskyPost, let ref = ProfileLink.blueskyWebPostRef(url) else { return }
+        defer { resolvingBlueskyPost = nil }
+        do {
+            let did = try await bluesky.withFreshSession {
+                try await BlueskyClient().resolveHandle(accessToken: $0.accessJwt, handle: ref.handle)
+            }
+            let uri = "at://\(did)/app.bsky.feed.post/\(ref.rkey)"
+            // ThreadView loads the conversation from threadID; the rest is placeholder.
+            sheet = .thread(FeedItem(network: .bluesky, rawId: uri, authorName: ref.handle,
+                                     authorHandle: ref.handle, avatarURL: nil, createdAt: Date(),
+                                     text: "", threadID: uri))
+        } catch {
+            NSWorkspace.shared.open(url) // couldn't resolve the handle — open normally
+        }
     }
 }
 
