@@ -49,10 +49,22 @@ private struct QuickReply: ViewModifier {
     func body(content: Content) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             content
+                #if os(macOS)
                 // Invisible-but-hittable backing (not .contentShape) so links keep their
                 // pointing-hand hover — same trick as elsewhere in the feed.
                 .background(Color.black.opacity(0.001))
                 .onTapGesture { withAnimation(.snappy(duration: 0.2)) { expanded.toggle() } }
+                #else
+                // Tap-catcher layer BEHIND the content. Taps on interactive children (links,
+                // avatar, username) hit those; taps that fall through (body text, gaps) reach
+                // this layer and expand the reply box. Putting the gesture on the content itself
+                // instead lets the child profile buttons swallow body taps on iOS.
+                .background(
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .onTapGesture { withAnimation(.snappy(duration: 0.2)) { expanded.toggle() } }
+                )
+                #endif
             if expanded { replyField }
         }
         // Focus on open, clear on close — covers both the body tap and the context-menu item.
