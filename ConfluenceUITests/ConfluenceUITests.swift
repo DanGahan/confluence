@@ -266,6 +266,22 @@ final class ConfluenceUITests: XCTestCase {
         XCTAssertTrue(app.secureTextFields.firstMatch.waitForExistence(timeout: 10), app.debugDescription)
     }
 
+    // #159: removing an image attachment before posting must not crash. Regression test for
+    // the enumerated-index binding bug — with the old code this crashed on remove.
+    @MainActor
+    func testRemovingComposerAttachmentDoesNotCrash() throws {
+        try XCTSkipUnless(isIOS, "Element queries are unreliable on macOS UI tests.")
+        let app = XCUIApplication()
+        app.launchArguments = ["-uiTestMockFeed", "-uiTestComposerAttachment"]
+        app.launch()
+        app.buttons["New Post"].tap()
+        let remove = app.buttons["Remove attachment"]
+        XCTAssertTrue(remove.waitForExistence(timeout: 10), app.debugDescription)
+        remove.tap()
+        // The bug crashed here; the app must stay alive and the composer stay usable.
+        XCTAssertTrue(app.buttons["Attach photo"].waitForExistence(timeout: 5), app.debugDescription)
+    }
+
     private var isIOS: Bool {
         #if os(iOS)
         true

@@ -101,7 +101,12 @@ struct ComposerView: View {
         #if os(macOS)
         .frame(width: 460) // macOS composer width; iOS fills the sheet
         #endif
-        .onAppear { editorFocused = true }
+        .onAppear {
+            editorFocused = true
+            if UITestLaunch.composerAttachment && composerStore.attachments.isEmpty {
+                composerStore.attachments = [MockComposer.attachment]
+            }
+        }
         .task { await load() }
     }
 
@@ -206,11 +211,18 @@ struct ComposerView: View {
     private func attachmentChips(_ composer: ComposerStore) -> some View {
         @Bindable var composer = composer
         return HStack(spacing: 8) {
-            ForEach(Array(composer.attachments.enumerated()), id: \.element.id) { i, attachment in
+            // Binding-based ForEach: stable per-element bindings + removal by id. The old
+            // enumerated()/`$attachments[i]` form crashed when an attachment was removed — the
+            // stale positional-index binding evaluated out of range during the SwiftUI update.
+            ForEach($composer.attachments) { $attachment in
                 if let image = PlatformImage(data: attachment.data) {
+                    // Capture the id as a plain value: reading `attachment` (a binding projection
+                    // into composer.attachments) inside removeAll would be a simultaneous access
+                    // to the array being mutated — an exclusivity crash.
+                    let id = attachment.id
                     AttachmentChip(image: image,
-                                   alt: $composer.attachments[i].alt,
-                                   onRemove: { composer.attachments.remove(at: i) })
+                                   alt: $attachment.alt,
+                                   onRemove: { composer.attachments.removeAll { $0.id == id } })
                 }
             }
         }

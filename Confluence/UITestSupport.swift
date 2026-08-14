@@ -10,6 +10,17 @@ enum UITestLaunch {
     /// Show the feed populated with canned posts — no login, no network — so UI tests can
     /// exercise post rendering, link taps, and quick reply on both platforms.
     static let mockFeed = ProcessInfo.processInfo.arguments.contains("-uiTestMockFeed")
+    /// Open the composer pre-seeded with an image attachment, so a UI test can exercise the
+    /// remove-attachment path (which crashed — #159).
+    static let composerAttachment = ProcessInfo.processInfo.arguments.contains("-uiTestComposerAttachment")
+}
+
+enum MockComposer {
+    /// A 1×1 PNG so the composer can open with a renderable attachment for the removal test.
+    static var attachment: Attachment {
+        let png = Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=")!
+        return Attachment(data: png, alt: "")
+    }
 }
 
 /// Observable fetch counter so a UI test can watch live-mode polling start/stop (#169).
