@@ -1,5 +1,7 @@
 import SwiftUI
+#if os(macOS)
 import AppKit
+#endif
 import ConfluenceKit
 
 /// Which network(s) the feed shows. Filtering is client-side over the already-merged list.
@@ -492,9 +494,12 @@ struct FeedRow: View {
         if let url = item.postURL {
             Divider()
             ShareLink(item: url) { Label("Share…", systemImage: "square.and.arrow.up") }
+            #if os(macOS)
+            // Safari Reading List has no public iOS API; ShareLink covers sharing on iOS.
             Button("Add to Reading List", systemImage: "eyeglasses") {
                 NSSharingService(named: .addToSafariReadingList)?.perform(withItems: [url])
             }
+            #endif
         }
         Divider()
         if postActions.isOwn(item) {
