@@ -36,7 +36,11 @@ struct AboutView: View {
                 .padding(.top, 4)
         }
         .padding(30)
-        .frame(width: 340)
+        #if os(macOS)
+        .frame(width: 340) // fixed About-panel width on macOS; iOS uses natural width (fits iPhone SE)
+        #else
+        .frame(maxWidth: 340)
+        #endif
     }
 
     @ViewBuilder private var commitRow: some View {
