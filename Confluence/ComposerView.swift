@@ -98,7 +98,9 @@ struct ComposerView: View {
             }
         }
         .padding(20)
-        .frame(width: 460)
+        #if os(macOS)
+        .frame(width: 460) // macOS composer width; iOS fills the sheet
+        #endif
         .onAppear { editorFocused = true }
         .task { await load() }
     }

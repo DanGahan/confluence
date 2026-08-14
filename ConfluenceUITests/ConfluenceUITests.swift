@@ -90,6 +90,50 @@ final class ConfluenceUITests: XCTestCase {
         XCTAssertTrue(profile.waitForExistence(timeout: 10), app.debugDescription)
     }
 
+    // #168: tapping the avatar opens the author's profile. Regression guard for the
+    // two-.sheet-on-one-view iOS bug (only one sheet presents; the avatar's was shadowed).
+    @MainActor
+    func testTappingAvatarOpensProfile() throws {
+        try XCTSkipUnless(isIOS, "Element queries are unreliable on macOS UI tests.")
+        let app = XCUIApplication()
+        app.launchArguments = ["-uiTestMockFeed"]
+        app.launch()
+        let avatar = app.buttons.matching(NSPredicate(format: "identifier == %@", "person.fill")).firstMatch
+        XCTAssertTrue(avatar.waitForExistence(timeout: 15))
+        avatar.tap()
+        let profile = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier CONTAINS %@", "ada.mock.test")).firstMatch
+        XCTAssertTrue(profile.waitForExistence(timeout: 10), app.debugDescription)
+    }
+
+    // #168: the "N replies" affordance opens the thread sheet (the other sheet on the avatar
+    // button — guards the two-sheet-on-one-view path and the thread sheet's iOS sizing).
+    @MainActor
+    func testOpeningThreadSheet() throws {
+        try XCTSkipUnless(isIOS, "Element queries are unreliable on macOS UI tests.")
+        let app = XCUIApplication()
+        app.launchArguments = ["-uiTestMockFeed"]
+        app.launch()
+        let replies = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "replies")).firstMatch
+        XCTAssertTrue(replies.waitForExistence(timeout: 15), app.debugDescription)
+        replies.tap()
+        XCTAssertTrue(app.staticTexts["Thread"].waitForExistence(timeout: 10), app.debugDescription)
+    }
+
+    // #168: the composer sheet presents on iOS and its content fits (macOS fixed width gated).
+    @MainActor
+    func testComposerSheetPresents() throws {
+        try XCTSkipUnless(isIOS, "Element queries are unreliable on macOS UI tests.")
+        let app = XCUIApplication()
+        app.launchArguments = ["-uiTestMockFeed"]
+        app.launch()
+        let compose = app.buttons["New Post"]
+        XCTAssertTrue(compose.waitForExistence(timeout: 15))
+        compose.tap()
+        // "New Post" title appears inside the composer sheet (distinct from the FAB button).
+        XCTAssertTrue(app.staticTexts["New Post"].waitForExistence(timeout: 5), app.debugDescription)
+    }
+
     // #167: the feed toolbar renders on iOS (regression — without a NavigationStack the
     // toolbar was absent entirely, leaving search/notifications/settings unreachable).
     @MainActor

@@ -38,6 +38,7 @@ enum MockFeed {
             attributedText: linked("Mock post two mentions @someone you can open in-app.",
                                     phrase: "@someone",
                                     url: ProfileLink.url(network: .bluesky, id: "did:plc:mocksomeone", handle: "someone.mock.test")!),
+            replyCount: 2, // surfaces the "N replies" thread affordance
             cid: "bafymock2"
         ),
         FeedItem(

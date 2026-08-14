@@ -52,7 +52,9 @@ struct ImageLightbox: View {
                 .padding(.horizontal, 8)
             }
         }
+        #if os(macOS)
         .frame(minWidth: 480, idealWidth: 900, minHeight: 360, idealHeight: 680)
+        #endif
         .overlay(alignment: .topLeading) {
             SheetCloseButton { dismiss() }.padding(12)
         }
