@@ -316,6 +316,25 @@ struct FeedView: View {
     /// iPhone-fit toolbar: a couple of primary buttons plus an overflow menu, so everything
     /// stays reachable within the nav bar's limited width. Compose stays the floating button.
     @ToolbarContentBuilder private var feedToolbarIOS: some ToolbarContent {
+        // Dedicated network-filter button (person.2 for combined, person for a single network),
+        // matching macOS — in the slot Settings vacated (#188).
+        ToolbarItem(placement: .topBarLeading) {
+            Menu {
+                if bothConnected {
+                    Picker("Show", selection: $networkFilter) {
+                        Label("Both Networks", systemImage: "person.2").tag(FeedFilter.both)
+                        Label("Bluesky", systemImage: "person").tag(FeedFilter.bluesky)
+                        Label("Mastodon", systemImage: "person").tag(FeedFilter.mastodon)
+                    }
+                    .pickerStyle(.inline)
+                }
+                if !bluesky.isLoggedIn { Button("Add Bluesky Account") { showingBlueskyLogin = true } }
+                if !mastodon.isLoggedIn { Button("Add Mastodon Account") { showingMastodonLogin = true } }
+            } label: {
+                Image(systemName: (networkFilter == .both && bothConnected) ? "person.2" : "person")
+            }
+            .accessibilityLabel(filterHelp)
+        }
         // Tap the feed title to scroll to top (#189).
         ToolbarItem(placement: .principal) {
             Button { scrollToTop() } label: {
@@ -336,14 +355,6 @@ struct FeedView: View {
         }
         ToolbarItem(placement: .topBarTrailing) {
             Menu {
-                if bothConnected {
-                    Picker("Show", selection: $networkFilter) {
-                        Label("Both Networks", systemImage: "person.2").tag(FeedFilter.both)
-                        Label("Bluesky", systemImage: "person").tag(FeedFilter.bluesky)
-                        Label("Mastodon", systemImage: "person").tag(FeedFilter.mastodon)
-                    }
-                    .pickerStyle(.inline)
-                }
                 Section {
                     Button { liveMode.toggle() } label: {
                         Label(liveMode ? "Turn Off Live Mode" : "Live Mode",
@@ -359,8 +370,6 @@ struct FeedView: View {
                 Section {
                     Button { showingSettings = true } label: { Label("Settings", systemImage: "gearshape") }
                 }
-                if !bluesky.isLoggedIn { Button("Add Bluesky Account") { showingBlueskyLogin = true } }
-                if !mastodon.isLoggedIn { Button("Add Mastodon Account") { showingMastodonLogin = true } }
             } label: {
                 Image(systemName: "ellipsis.circle")
             }
