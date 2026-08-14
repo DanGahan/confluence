@@ -54,6 +54,30 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             build
 
+  build-check-ios:
+    name: Build (iOS app, simulator)
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install xcodegen
+        run: brew install xcodegen
+      - name: Generate Xcode project
+        run: xcodegen generate
+      # iOS Simulator build — no signing needed. Catches iOS-specific regressions
+      # (a new AppKit-only API, a missing #if os() gate) that the macOS build misses.
+      # generic/platform avoids depending on a specific booted simulator device.
+      - name: Build
+        run: |
+          set -euxo pipefail
+          xcodebuild \
+            -scheme Confluence \
+            -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
   sast:
     name: SAST (Semgrep)
     # Runs on Linux — Semgrep is a source-only scanner, no macOS toolchain needed,

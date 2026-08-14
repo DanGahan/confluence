@@ -14,6 +14,11 @@ before their build step, so a red CI blocks a release. Jobs:
 - **Build (app target, unsigned)** — `xcodebuild build` at Debug with signing
   disabled. Catches app-target compile regressions that `swift test` on the
   kit doesn't see.
+- **Build (iOS app, simulator)** — `xcodebuild build` for
+  `generic/platform=iOS Simulator`, signing off. Catches iOS-specific
+  regressions (an AppKit-only API slipping in, a missing `#if os()` gate) on
+  the shared codebase. Release workflows are macOS-only, so this gates PRs but
+  isn't invoked by a release build.
 - **SAST (Semgrep)** — `semgrep --config=p/default` on a Linux runner
   (source-only, no macOS toolchain needed). Findings surface on the Security
   tab as SARIF. Semgrep owns **Swift** scanning: we tried CodeQL first, but its
