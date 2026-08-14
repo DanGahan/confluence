@@ -90,6 +90,19 @@ final class ConfluenceUITests: XCTestCase {
         XCTAssertTrue(profile.waitForExistence(timeout: 10), app.debugDescription)
     }
 
+    // #167: the feed toolbar renders on iOS (regression — without a NavigationStack the
+    // toolbar was absent entirely, leaving search/notifications/settings unreachable).
+    @MainActor
+    func testFeedToolbarPresentOnIOS() throws {
+        try XCTSkipUnless(isIOS, "Element queries are unreliable on macOS UI tests.")
+        let app = XCUIApplication()
+        app.launchArguments = ["-uiTestMockFeed"]
+        app.launch()
+        XCTAssertTrue(app.buttons["Settings"].waitForExistence(timeout: 15), app.debugDescription)
+        XCTAssertTrue(app.buttons["Search"].exists)
+        XCTAssertTrue(app.buttons["More"].exists)
+    }
+
     private var isIOS: Bool {
         #if os(iOS)
         true

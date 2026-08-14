@@ -33,7 +33,9 @@ struct ContentView: View {
                 }
             }
         }
-        .frame(minWidth: 480, minHeight: 600)
+        #if os(macOS)
+        .frame(minWidth: 480, minHeight: 600) // macOS window min size; on iPhone this would overflow
+        #endif
         // Restore persisted sessions here, once the window is on screen — not in the stores'
         // init, where the synchronous Keychain read blocked launch and left the app window-less
         // until a Dock click (#126). Each store reads the Keychain off the main actor and both
