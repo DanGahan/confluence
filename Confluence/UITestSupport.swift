@@ -47,6 +47,14 @@ enum MockFeed {
             text: "Mock post three is plain text, good for the reply box.",
             cid: "bafymock3"
         ),
+        FeedItem(
+            network: .bluesky, rawId: "mock-4", authorID: "did:plc:mockdeb",
+            authorName: "Deb Mock", authorHandle: "deb.mock.test",
+            avatarURL: nil, createdAt: Date(timeIntervalSince1970: 1_769_970_000),
+            text: "Mock post four has an image to tap.",
+            imageURLs: [URL(string: "https://picsum.photos/seed/confluence/600/400")!],
+            cid: "bafymock4"
+        ),
     ]
 
     private static func linked(_ text: String, phrase: String, url: URL) -> AttributedString {

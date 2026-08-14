@@ -103,6 +103,36 @@ final class ConfluenceUITests: XCTestCase {
         XCTAssertTrue(app.buttons["More"].exists)
     }
 
+    // #164: the post context menu opens on long-press and offers the post actions.
+    @MainActor
+    func testPostContextMenuOnIOS() throws {
+        try XCTSkipUnless(isIOS, "Element queries are unreliable on macOS UI tests.")
+        let app = XCUIApplication()
+        app.launchArguments = ["-uiTestMockFeed"]
+        app.launch()
+        let body = app.staticTexts
+            .matching(NSPredicate(format: "label CONTAINS %@", "plain text, good for the reply")).firstMatch
+        XCTAssertTrue(body.waitForExistence(timeout: 15))
+        body.press(forDuration: 1.1)
+        XCTAssertTrue(app.buttons["Reply"].waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertTrue(app.buttons["Repost"].exists)
+        XCTAssertTrue(app.buttons["Like"].exists)
+    }
+
+    // #164: tapping a post image opens the lightbox.
+    @MainActor
+    func testTappingImageOpensLightbox() throws {
+        try XCTSkipUnless(isIOS, "Element queries are unreliable on macOS UI tests.")
+        let app = XCUIApplication()
+        app.launchArguments = ["-uiTestMockFeed"]
+        app.launch()
+        // The image post's row (Deb Mock) — its tappable image Button lives inside it.
+        let image = app.buttons["Image"]
+        XCTAssertTrue(image.waitForExistence(timeout: 15))
+        image.tap()
+        XCTAssertTrue(app.buttons["Zoom in"].waitForExistence(timeout: 5), app.debugDescription)
+    }
+
     private var isIOS: Bool {
         #if os(iOS)
         true
