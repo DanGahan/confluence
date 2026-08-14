@@ -5,6 +5,7 @@ options:
   bundleIdPrefix: com.dangahan.confluence
   deploymentTarget:
     macOS: "26.0"
+    iOS: "26.0"
   createIntermediateGroups: true
 
 packages:
@@ -21,7 +22,8 @@ settings:
 targets:
   Confluence:
     type: application
-    platform: macOS
+    # One multiplatform target — macOS + iOS from a single codebase (no fork).
+    supportedDestinations: [macOS, iOS]
     sources:
       - Confluence
       # Icon Composer bundle — compiled straight into the app icon (Xcode 26).
@@ -33,16 +35,6 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.dangahan.confluence
         ASSETCATALOG_COMPILER_APPICON_NAME: app
-        CODE_SIGN_ENTITLEMENTS: Confluence/Confluence.entitlements
-        ENABLE_HARDENED_RUNTIME: YES
-        # Stable local signing identity so Keychain "Always Allow" persists across rebuilds.
-        # Create it once with scripts/create-dev-cert.sh. Replace with a real Apple
-        # Development team for distribution.
-        CODE_SIGN_STYLE: Manual
-        CODE_SIGN_IDENTITY: "Confluence Dev"
-        # With a real signing identity, hardened runtime is enforced and rejects Xcode's
-        # separate debug dylib (different Team ID than our self-signed cert). Disable it.
-        ENABLE_DEBUG_DYLIB: NO
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.social-networking
         INFOPLIST_KEY_CFBundleDisplayName: Confluence
         # Marketing version becomes CFBundleShortVersionString → shown in About.
@@ -52,6 +44,23 @@ targets:
         # (Xcode's INFOPLIST_KEY_* only accepts a fixed set of Apple keys). Local
         # dev builds keep the default so About shows "dev / local".
         MARKETING_VERSION: "dev"
+        # iOS launch screen + orientations (ignored by the macOS build). Auto-generated
+        # empty launch screen; iPhone omits upside-down, iPad allows all four.
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+        # macOS-only signing/runtime, SDK-conditioned so the iOS build (esp. the
+        # simulator, which needs no signing) doesn't inherit them.
+        CODE_SIGN_ENTITLEMENTS[sdk=macosx*]: Confluence/Confluence.entitlements
+        ENABLE_HARDENED_RUNTIME[sdk=macosx*]: YES
+        # Stable local signing identity so Keychain "Always Allow" persists across rebuilds.
+        # Create it once with scripts/create-dev-cert.sh. Replace with a real Apple
+        # Development team for distribution.
+        CODE_SIGN_STYLE[sdk=macosx*]: Manual
+        CODE_SIGN_IDENTITY[sdk=macosx*]: "Confluence Dev"
+        # With a real signing identity, hardened runtime is enforced and rejects Xcode's
+        # separate debug dylib (different Team ID than our self-signed cert). Disable it.
+        ENABLE_DEBUG_DYLIB[sdk=macosx*]: NO
 
   ConfluenceUITests:
     type: bundle.ui-testing
