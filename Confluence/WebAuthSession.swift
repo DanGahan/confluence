@@ -1,5 +1,10 @@
 import AuthenticationServices
 import ConfluenceKit
+#if canImport(AppKit)
+import AppKit
+#else
+import UIKit
+#endif
 
 /// Production WebAuthenticator: runs the OAuth consent in a system browser sheet.
 /// No embedded webview — ASWebAuthenticationSession only, per the security checklist.
@@ -37,6 +42,12 @@ final class WebAuthSession: NSObject, WebAuthenticator, ASWebAuthenticationPrese
     }
 
     func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
-        NSApplication.shared.keyWindow ?? NSApplication.shared.windows.first ?? ASPresentationAnchor()
+        #if canImport(AppKit)
+        return NSApplication.shared.keyWindow ?? NSApplication.shared.windows.first ?? ASPresentationAnchor()
+        #else
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        let scene = scenes.first { $0.activationState == .foregroundActive } ?? scenes.first
+        return scene?.keyWindow ?? scene?.windows.first ?? ASPresentationAnchor()
+        #endif
     }
 }

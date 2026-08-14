@@ -3,7 +3,9 @@ import ConfluenceKit
 
 @main
 struct ConfluenceApp: App {
+    #if os(macOS)
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    #endif
     @State private var bluesky: BlueskyAccountStore
     @State private var mastodon: MastodonAccountStore
     @State private var follows = FollowStore()
@@ -34,19 +36,27 @@ struct ConfluenceApp: App {
                 .environment(composer)
                 .environment(postActions)
                 .environment(drafts)
+                #if os(macOS)
                 .background(FeedWindowConfigurator()) // prefer tabs so ⌘T adds a tab, not a window
+                #endif
         }
+        #if os(macOS)
         .windowResizability(.contentMinSize)
         .commands { AppCommands() }
+        #endif
 
+        // macOS gets a standard Settings scene; iOS reaches Settings from a toolbar entry (#166).
+        #if os(macOS)
         Settings {
             SettingsView()
                 .environment(bluesky)
                 .environment(mastodon)
         }
+        #endif
     }
 }
 
+#if os(macOS)
 /// Ensures the main window is actually shown at launch. macOS state restoration can leave a
 /// SwiftUI `WindowGroup` app window-less after a relaunch — the app runs but no window appears
 /// until you click the Dock icon (which fires `applicationShouldHandleReopen`). We force the
@@ -94,3 +104,4 @@ private struct FeedWindowConfigurator: NSViewRepresentable {
     }
     func updateNSView(_ nsView: NSView, context: Context) {}
 }
+#endif

@@ -1,5 +1,4 @@
 import SwiftUI
-import AppKit
 import ConfluenceKit
 
 private struct ProfileTarget: Identifiable {
@@ -51,7 +50,7 @@ private struct ProfileLinkHandler: ViewModifier {
                 // Open web links ourselves: `.systemAction` returned from a programmatically
                 // invoked OpenURLAction (our NSTextView delegate calls this) doesn't reliably
                 // open, which left every post link dead.
-                NSWorkspace.shared.open(url)
+                openExternally(url)
                 return .handled
             })
             .task(id: resolvingStatus) { await resolveStatus() }
@@ -71,7 +70,7 @@ private struct ProfileLinkHandler: ViewModifier {
         if let post = results.posts.first {
             sheet = .thread(post)
         } else {
-            NSWorkspace.shared.open(url) // couldn't resolve it — open normally
+            openExternally(url) // couldn't resolve it — open normally
         }
         resolvingStatus = nil
     }

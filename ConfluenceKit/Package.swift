@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "ConfluenceKit",
-    platforms: [.macOS(.v26)],
+    platforms: [.macOS(.v26), .iOS(.v26)],
     products: [
         .library(name: "ConfluenceKit", targets: ["ConfluenceKit"]),
     ],
