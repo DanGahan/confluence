@@ -142,9 +142,11 @@ final class ConfluenceUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["-uiTestMockFeed"]
         app.launch()
-        XCTAssertTrue(app.buttons["Settings"].waitForExistence(timeout: 15), app.debugDescription)
-        XCTAssertTrue(app.buttons["Search"].exists)
+        XCTAssertTrue(app.buttons["Search"].waitForExistence(timeout: 15), app.debugDescription)
         XCTAssertTrue(app.buttons["More"].exists)
+        // Settings now lives in the ••• overflow menu (#188).
+        app.buttons["More"].tap()
+        XCTAssertTrue(app.buttons["Settings"].waitForExistence(timeout: 5), app.debugDescription)
     }
 
     // #164: the post context menu opens on long-press and offers the post actions.
@@ -236,6 +238,7 @@ final class ConfluenceUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["-uiTestMockFeed"]
         app.launch()
+        app.buttons["More"].tap()          // Settings is in the ••• overflow menu (#188)
         app.buttons["Settings"].tap()
         app.buttons["Fonts & Colors"].tap()
         XCTAssertTrue(app.buttons["Reset to Default"].waitForExistence(timeout: 10), app.debugDescription)
@@ -280,6 +283,34 @@ final class ConfluenceUITests: XCTestCase {
         remove.tap()
         // The bug crashed here; the app must stay alive and the composer stay usable.
         XCTAssertTrue(app.buttons["Attach photo"].waitForExistence(timeout: 5), app.debugDescription)
+    }
+
+    // #190: an external web link opens the in-app browser (default on) — a web view appears
+    // in-app rather than jumping out to Safari.
+    @MainActor
+    func testWebLinkOpensInAppBrowser() throws {
+        try XCTSkipUnless(isIOS, "Element queries are unreliable on macOS UI tests.")
+        let app = XCUIApplication()
+        app.launchArguments = ["-uiTestMockFeed"]
+        app.launch()
+        let link = app.links["example.com"]
+        XCTAssertTrue(link.waitForExistence(timeout: 15), app.debugDescription)
+        link.tap()
+        XCTAssertTrue(app.webViews.firstMatch.waitForExistence(timeout: 10), app.debugDescription)
+    }
+
+    // #191: sheets have no explicit close button on iOS (swipe-to-dismiss).
+    @MainActor
+    func testSheetsHaveNoCloseButtonOnIOS() throws {
+        try XCTSkipUnless(isIOS, "Element queries are unreliable on macOS UI tests.")
+        let app = XCUIApplication()
+        app.launchArguments = ["-uiTestMockFeed"]
+        app.launch()
+        let replies = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "replies")).firstMatch
+        XCTAssertTrue(replies.waitForExistence(timeout: 15))
+        replies.tap()
+        XCTAssertTrue(app.staticTexts["Thread"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["Close"].exists, "iOS sheets should have no close button")
     }
 
     private var isIOS: Bool {

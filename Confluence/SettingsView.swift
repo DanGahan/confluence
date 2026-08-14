@@ -3,6 +3,7 @@ import ConfluenceKit
 
 struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
+    @AppStorage(BrowsingPreference.openLinksInAppKey) private var openLinksInApp = BrowsingPreference.openLinksInAppDefault
 
     var body: some View {
         #if os(macOS)
@@ -32,6 +33,9 @@ struct SettingsView: View {
                 }
                 NavigationLink { AboutView().navigationTitle("About") } label: {
                     Label("About", systemImage: "info.circle")
+                }
+                Section("Browsing") {
+                    Toggle("Open links in app", isOn: $openLinksInApp)
                 }
             }
             .navigationTitle("Settings")

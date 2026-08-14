@@ -13,10 +13,16 @@ private struct ProfileTarget: Identifiable {
 private enum LinkSheet: Identifiable {
     case profile(ProfileTarget)
     case thread(FeedItem)
+    #if os(iOS)
+    case web(URL)
+    #endif
     var id: String {
         switch self {
         case .profile(let t): return "profile:\(t.id)"
         case .thread(let item): return "thread:\(item.id)"
+        #if os(iOS)
+        case .web(let url): return "web:\(url.absoluteString)"
+        #endif
         }
     }
 }
@@ -26,6 +32,9 @@ private enum LinkSheet: Identifiable {
 /// opens in the default browser.
 private struct ProfileLinkHandler: ViewModifier {
     @Environment(MastodonAccountStore.self) private var mastodon
+    #if os(iOS)
+    @AppStorage(BrowsingPreference.openLinksInAppKey) private var openLinksInApp = BrowsingPreference.openLinksInAppDefault
+    #endif
     @State private var sheet: LinkSheet?
     @State private var resolvingStatus: URL?
 
@@ -47,6 +56,14 @@ private struct ProfileLinkHandler: ViewModifier {
                     resolvingStatus = url
                     return .handled
                 }
+                #if os(iOS)
+                // iOS: open external web links in the in-app browser (default), as a sheet like
+                // the thread/profile screens. Off → system browser.
+                if openLinksInApp, url.scheme == "http" || url.scheme == "https" {
+                    sheet = .web(url)
+                    return .handled
+                }
+                #endif
                 // Open web links ourselves: `.systemAction` returned from a programmatically
                 // invoked OpenURLAction (our NSTextView delegate calls this) doesn't reliably
                 // open, which left every post link dead.
@@ -58,6 +75,9 @@ private struct ProfileLinkHandler: ViewModifier {
                 switch s {
                 case .profile(let t): ProfileView(network: t.network, authorID: t.accountID, handle: t.handle)
                 case .thread(let item): ThreadView(item: item)
+                #if os(iOS)
+                case .web(let url): SafariView(url: url).ignoresSafeArea()
+                #endif
                 }
             }
     }

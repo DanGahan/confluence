@@ -44,21 +44,10 @@ struct SheetCloseButton: View {
     }
 }
 #else
-/// iOS close control: a standard hierarchical xmark. iOS sheets also swipe-to-dismiss, but an
-/// explicit button matches the macOS affordance and keeps VoiceOver parity.
+/// iOS: no explicit close button — sheets swipe-to-dismiss, which is self-explanatory (#191).
+/// Kept as an empty view so the shared call sites don't need per-platform gating.
 struct SheetCloseButton: View {
     let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: "xmark.circle.fill")
-                .font(.title2)
-                .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(.secondary)
-        }
-        .buttonStyle(.plain)
-        .keyboardShortcut(.cancelAction)
-        .accessibilityLabel("Close")
-    }
+    var body: some View { EmptyView() }
 }
 #endif
