@@ -1,6 +1,8 @@
 import SwiftUI
-import AppKit
 import ConfluenceKit
+
+#if os(macOS)
+import AppKit
 
 /// Read-only, selectable post body backed by NSTextView.
 ///
@@ -167,3 +169,27 @@ enum LinkClickRouter {
         }
     }
 }
+
+#else
+/// iOS post body. The macOS NSTextView apparatus (LinkClickRouter et al.) exists to patch
+/// macOS-only SwiftUI bugs; on iOS plain `Text` renders `.link` runs with working taps, so this
+/// is the whole implementation. ponytail: revisit under the #163 rich-text spike if links or
+/// selection misbehave in the feed's LazyVStack.
+struct RichTextLabel: View {
+    let attributed: AttributedString
+    let openURL: OpenURLAction
+    var fontName: String = PostAppearance.defaultName
+    var fontSize: Double = PostAppearance.defaultSize
+    var linkColorHex: String = PostAppearance.defaultLinkColorHex
+
+    var body: some View {
+        Text(attributed)
+            .font(PostAppearance.font(name: fontName, size: fontSize))
+            .tint(PostAppearance.linkColor(hex: linkColorHex))
+            .textSelection(.enabled)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .environment(\.openURL, openURL)
+    }
+}
+#endif

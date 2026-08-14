@@ -1,4 +1,10 @@
+// TextKit 1 (NSLayoutManager/NSTextContainer/NSTextStorage) ships in AppKit on macOS and
+// UIKit on iOS — same API, different umbrella. The kit stays otherwise platform-free.
+#if canImport(AppKit)
 import AppKit
+#else
+import UIKit
+#endif
 
 /// Hit-testing + cursor-rect geometry over `.link` runs in a laid-out TextKit 1 container.
 ///

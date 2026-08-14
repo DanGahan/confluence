@@ -1,5 +1,6 @@
 import SwiftUI
 
+#if os(macOS)
 /// A close control that mimics the standard macOS window close button — a single red dot
 /// (no minimise/zoom) that shows an ✕ on hover and greys out when the window is inactive,
 /// following the OS the way the real traffic-light close does. Placed top-left of a sheet.
@@ -42,3 +43,22 @@ struct SheetCloseButton: View {
         .accessibilityLabel("Close")
     }
 }
+#else
+/// iOS close control: a standard hierarchical xmark. iOS sheets also swipe-to-dismiss, but an
+/// explicit button matches the macOS affordance and keeps VoiceOver parity.
+struct SheetCloseButton: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "xmark.circle.fill")
+                .font(.title2)
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(.secondary)
+        }
+        .buttonStyle(.plain)
+        .keyboardShortcut(.cancelAction)
+        .accessibilityLabel("Close")
+    }
+}
+#endif
