@@ -177,6 +177,7 @@ struct ComposerView: View {
             .menuIndicator(.hidden)
             .frame(width: 28)
             .help("Attach Photo")
+            .accessibilityLabel("Attach photo") // was unlabelled — VoiceOver read nothing
             .disabled(full)
             .photosPicker(isPresented: $showingLibrary, selection: $pickerItems,
                           maxSelectionCount: ComposerStore.maxAttachments - composer.attachments.count, matching: .images)
