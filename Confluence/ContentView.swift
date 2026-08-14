@@ -20,7 +20,7 @@ struct ContentView: View {
                     .controlSize(.large)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .accessibilityLabel("Restoring accounts")
-            } else if anyLoggedIn {
+            } else if anyLoggedIn || UITestLaunch.mockFeed {
                 FeedView()
             } else {
                 ContentUnavailableView {
