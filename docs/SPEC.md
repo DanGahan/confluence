@@ -1,11 +1,12 @@
 # Spec — Confluence (working title)
 
-A native macOS app showing a combined Bluesky + Mastodon feed. Inspired by Indigo.
+A native Apple app showing a combined Bluesky + Mastodon feed, on **macOS and iOS from one codebase**. Inspired by Indigo.
 
 ## Platform & stack (fixed decisions — do not relitigate)
 
-- **macOS 26 (Tahoe) minimum.** Liquid Glass and modern SwiftUI materials come free from the OS; do not reimplement them.
-- **Swift 6, SwiftUI only.** No AppKit unless SwiftUI genuinely cannot do it (document why in the PR).
+- **macOS 26 (Tahoe) minimum; iOS 26 minimum (iPhone + iPad).** Liquid Glass and modern SwiftUI materials come free from the OS; do not reimplement them. iOS 27 is a compatibility pass against the newest SDK, not a separate floor.
+- **One codebase, one app target, no fork.** Platform differences live behind `#if os(...)` seams and small file-level shims — **no cross-platform abstraction layer** (no "PlatformKit" protocol module for one implementation). See `docs/IOS_PLAN.md`.
+- **Swift 6, SwiftUI only.** No AppKit/UIKit unless SwiftUI genuinely cannot do it (document why in the PR). Business logic in `ConfluenceKit` stays platform-free (Foundation + Observation only) — never import AppKit or UIKit there.
 - **Zero third-party dependencies.** Both APIs are plain JSON over HTTPS; `URLSession` + `Codable` cover them. Adding a dependency requires updating this file with the justification.
 - **Xcode project via Swift Package + app target.** Business logic lives in a local SPM package (`ConfluenceKit`) so it is testable without booting the app.
 - **Persistence:** UserDefaults for lightweight state (feed position, post-target checkboxes), Keychain for all credentials, no database. Feed content is not persisted; it is refetched. (`ponytail:` add SwiftData cache only if offline reading is ever requested.)
@@ -66,14 +67,16 @@ A native macOS app showing a combined Bluesky + Mastodon feed. Inspired by Indig
 - Standard SwiftUI components, system materials, SF Symbols, system typography and spacing. No custom chrome.
 - Full Dark Mode and accent-color support. Every interactive element has an accessibility label; feed is fully usable via VoiceOver and keyboard.
 
-### F12 — macOS first
-- Single-window app with standard menu bar (File → New Post, Edit, View → Refresh/Scroll to Top, Window, Help).
-- Keyboard shortcuts as listed per feature. Settings in the standard ⌘, Settings window (accounts live here).
-- App Sandbox on, network-client entitlement only. Hardened Runtime on.
+### F12 — Native platform behavior (macOS + iOS)
+- **macOS:** single-window app with standard menu bar (File → New Post, Edit, View → Refresh/Scroll to Top, Window, Help); keyboard shortcuts as listed per feature; Settings in the standard ⌘, Settings window (accounts live here). App Sandbox on, network-client entitlement only, Hardened Runtime on.
+- **iOS (iPhone + iPad):** single `WindowGroup`; there is no Settings scene, so Settings/About are reached from a toolbar entry (sheet or `NavigationStack`) reusing the same SwiftUI content. Hardware-keyboard shortcuts on iPad reuse the macOS command set; software-keyboard users get on-screen affordances for every action. Menu-bar–only and window-tab behaviors are `#if os(macOS)` and are **not** emulated on iOS.
+- Both: every interactive element has an accessibility label; the app is fully usable via VoiceOver, and (iOS) supports Dynamic Type up to accessibility sizes without truncation or overlap.
 
 ### F13 — Resizable & responsive
-- Window freely resizable, min 480×600. Feed column caps at a comfortable reading width (~600 pt) centered when wider.
-- Layout uses adaptive SwiftUI containers — nothing may truncate or overlap at min size. Window frame restored on relaunch (system-provided).
+- **macOS:** window freely resizable, min 480×600; window frame restored on relaunch (system-provided).
+- **iOS:** usable at the narrowest supported iPhone width (iPhone SE) through iPad, in portrait and landscape; iPad supports Split View / Slide Over multitasking.
+- Feed column caps at a comfortable reading width (~600 pt), centered when wider (covers wide Mac windows and iPad).
+- Layout uses adaptive SwiftUI containers — nothing may truncate or overlap at any supported size. Touch targets are ≥ 44×44 pt on iOS.
 
 ### F14 — Inline quick reply
 - Clicking a post's body expands the row to reveal an inline reply text field + Reply button; clicking again (or Cancel) collapses it. Works everywhere posts render: feed, thread, profile, search.
@@ -90,4 +93,4 @@ A native macOS app showing a combined Bluesky + Mastodon feed. Inspired by Indig
 
 ## Out of scope (MVP)
 
-Multi-account, DMs, lists, offline cache, quote posts, polls, video upload, iOS/iPadOS, algorithmic feeds, muting/blocking, translations.
+Multi-account, DMs, lists, offline cache, quote posts, polls, video upload, algorithmic feeds, muting/blocking, translations.

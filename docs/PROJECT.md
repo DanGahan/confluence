@@ -225,6 +225,37 @@ ourselves because returning `.systemAction` from a programmatically-invoked
   `com.apple.security.network.client`. Adding any entitlement requires written
   justification in the PR.
 
+## iOS differences
+
+Confluence targets macOS **and** iOS (iPhone + iPad) from one app target and one
+codebase — no fork. `ConfluenceKit` is already platform-free; the port is almost
+entirely the thin view layer. Full ticket breakdown in
+[IOS_PLAN.md](IOS_PLAN.md). What differs, and the rule of thumb:
+
+- **`#if os(...)` seams, no abstraction layer.** Platform code is gated inline or
+  in small file-level shims (`PlatformImage` typealias, an `openExternally(_:)`
+  wrapper, a per-platform auth presentation anchor). Do **not** add a
+  "PlatformKit" protocol module — that's an abstraction with one implementation
+  per platform, exactly what the house rules forbid.
+- **The macOS hacks are macOS-only, and are liabilities to *not* port.**
+  `RichTextLabel`/`LinkClickRouter` (dead `Text` links + misrouted representable
+  clicks in a LazyVStack), `FeedWindowConfigurator` (window tabbing), the
+  window-restore adaptor — each patches a macOS-specific SwiftUI bug. On iOS the
+  naive SwiftUI path usually just works; confirm with a timeboxed spike before
+  porting any workaround. `LinkGeometry` lives in the kit precisely so a UITextView
+  port (if ever needed) can reuse it unchanged.
+- **No Settings scene on iOS.** macOS uses the standard `Settings` scene; iOS
+  reaches Settings/About from a toolbar entry (sheet / `NavigationStack`) over the
+  same `SettingsView` content. Menu bar (`AppCommands`) and window tabbing are
+  `#if os(macOS)`; hardware-keyboard shortcuts on iPad can reuse the command set.
+- **Keychain:** the legacy-keychain fallback (G8) is a macOS unsigned-dev-build
+  concern only — gated `#if os(macOS)`. iOS always uses the data-protection keychain.
+- **No Reading List on iOS** (no public API); `ShareLink` covers sharing on both.
+- **Touch:** right-click → long-press maps to `.contextMenu` for free, but the
+  quick-reply body-tap becomes the primary affordance; targets are ≥ 44 pt;
+  Dynamic Type must not truncate. Verify hit-testing under touch (the macOS
+  gotchas were mouse-observed).
+
 ## Testing
 
 Pyramid, enforced (~70% unit / ~25% integration / ~5% UI):
