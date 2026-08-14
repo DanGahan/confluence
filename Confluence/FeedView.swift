@@ -33,6 +33,9 @@ struct FeedView: View {
     @State private var showingNotifications = false
     @State private var showingSearch = false
     @State private var showingComposer = false
+    #if !os(macOS)
+    @State private var showingSettings = false // iOS has no Settings scene; reach it from the toolbar
+    #endif
     @State private var networkFilter: FeedFilter = .both
     @State private var ownFeedScope: OwnFeedScope?
     @State private var topID: String?
@@ -201,6 +204,11 @@ struct FeedView: View {
         .sheet(isPresented: $showingMastodonLogin) { MastodonLoginView() }
         .sheet(isPresented: $showingNotifications) { NotificationsView() }
         .sheet(isPresented: $showingSearch) { SearchView() }
+        #if !os(macOS)
+        .sheet(isPresented: $showingSettings) {
+            SettingsView().environment(bluesky).environment(mastodon)
+        }
+        #endif
         .sheet(isPresented: $showingComposer, onDismiss: {
             if composer.didPostAll { composer.reset(); Task { await feed.refresh() } }
         }) { ComposerView() }
@@ -273,6 +281,13 @@ struct FeedView: View {
                     .accessibilityLabel("Refresh")
             }
         }
+        #if !os(macOS)
+        // macOS has Settings in the ⌘, menu; iOS surfaces it here.
+        ToolbarItem {
+            Button { showingSettings = true } label: { Image(systemName: "gearshape") }
+                .accessibilityLabel("Settings")
+        }
+        #endif
     }
 
     private var composeButton: some View {
