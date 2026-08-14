@@ -183,10 +183,12 @@ struct RichTextLabel: View {
     var linkColorHex: String = PostAppearance.defaultLinkColorHex
 
     var body: some View {
+        // No .textSelection here: on iOS selectable Text swallows the tap that should fall
+        // through to the row's tap-to-reply gesture (and long-press → the post context menu).
+        // Link runs still tap through to openURL. Selection is a macOS-only affordance.
         Text(attributed)
             .font(PostAppearance.font(name: fontName, size: fontSize))
             .tint(PostAppearance.linkColor(hex: linkColorHex))
-            .textSelection(.enabled)
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
             .environment(\.openURL, openURL)

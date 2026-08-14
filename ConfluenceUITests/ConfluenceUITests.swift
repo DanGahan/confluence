@@ -41,6 +41,55 @@ final class ConfluenceUITests: XCTestCase {
         XCTAssertTrue(app.links.firstMatch.waitForExistence(timeout: 15), app.debugDescription)
     }
 
+    // #165: tapping a post body expands the inline quick-reply field.
+    @MainActor
+    func testTappingPostBodyExpandsReply() throws {
+        try XCTSkipUnless(isIOS, "Element queries are unreliable on macOS UI tests.")
+        let app = XCUIApplication()
+        app.launchArguments = ["-uiTestMockFeed"]
+        app.launch()
+        // Tap the body text itself (clear of the avatar/username row) so the tap exercises the
+        // post-body expand gesture, not the "Opens profile" author button.
+        let body = app.staticTexts
+            .matching(NSPredicate(format: "label CONTAINS %@", "plain text, good for the reply")).firstMatch
+        XCTAssertTrue(body.waitForExistence(timeout: 15))
+        body.tap()
+        XCTAssertTrue(app.textFields["Reply text"].waitForExistence(timeout: 5), app.debugDescription)
+    }
+
+    // #163/#164: an in-app @-mention link opens the profile (link taps still win over the
+    // body-expand catcher, and route in-app rather than to Safari).
+    @MainActor
+    func testTappingMentionLinkOpensProfile() throws {
+        try XCTSkipUnless(isIOS, "Element queries are unreliable on macOS UI tests.")
+        let app = XCUIApplication()
+        app.launchArguments = ["-uiTestMockFeed"]
+        app.launch()
+        let mention = app.links["@someone"]
+        XCTAssertTrue(mention.waitForExistence(timeout: 15))
+        mention.tap()
+        let profile = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier CONTAINS %@", "someone.mock.test")).firstMatch
+        XCTAssertTrue(profile.waitForExistence(timeout: 10), app.debugDescription)
+    }
+
+    // #164: tapping the username (not the body) opens the author's profile.
+    @MainActor
+    func testTappingUsernameOpensProfile() throws {
+        try XCTSkipUnless(isIOS, "Element queries are unreliable on macOS UI tests.")
+        let app = XCUIApplication()
+        app.launchArguments = ["-uiTestMockFeed"]
+        app.launch()
+        let author = app.buttons
+            .matching(NSPredicate(format: "label CONTAINS %@", "Opens profile"))
+            .matching(NSPredicate(format: "label CONTAINS %@", "cy.mock.test")).firstMatch
+        XCTAssertTrue(author.waitForExistence(timeout: 15))
+        author.tap()
+        let profile = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier CONTAINS %@", "cy.mock.test")).firstMatch
+        XCTAssertTrue(profile.waitForExistence(timeout: 10), app.debugDescription)
+    }
+
     private var isIOS: Bool {
         #if os(iOS)
         true

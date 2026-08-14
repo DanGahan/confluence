@@ -496,7 +496,9 @@ struct FeedRow: View {
             Text("This permanently deletes the post on \(networkName).")
         }
         .sheet(item: $lightbox) { ImageLightbox(item: $0) }
-        .accessibilityElement(children: .combine)
+        // Combine the row into one VoiceOver element normally; under UI tests keep children
+        // addressable (combine collapses sub-element frames to the row, breaking tap targeting).
+        .accessibilityElement(children: UITestLaunch.mockFeed ? .contain : .combine)
         .accessibilityLabel(accessibilitySummary)
         .accessibilityAction(named: followLabel) { Task { await follows.toggle(item) } }
     }
