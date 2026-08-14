@@ -41,7 +41,11 @@ struct PostImages: View {
 
     @ViewBuilder private func tappable(_ i: Int, _ images: [URL], @ViewBuilder _ content: () -> some View) -> some View {
         if let onTap {
-            Button { onTap(i, images) } label: { content() }.buttonStyle(.plain)
+            Button { onTap(i, images) } label: { content() }
+                .buttonStyle(.plain)
+                // Was unlabelled — VoiceOver read nothing. Label it and note it opens the lightbox.
+                .accessibilityLabel(images.count > 1 ? "Image \(i + 1) of \(images.count)" : "Image")
+                .accessibilityHint("Opens full screen")
         } else {
             content()
         }
