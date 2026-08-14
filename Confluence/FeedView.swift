@@ -142,6 +142,16 @@ struct FeedView: View {
     }
 
     var body: some View {
+        #if os(macOS)
+        // macOS gets its toolbar from the window; no NavigationStack needed.
+        feedContent
+        #else
+        // iOS: a NavigationStack is required for `.toolbar` to render a navigation bar at all.
+        NavigationStack { feedContent.navigationBarTitleDisplayMode(.inline) }
+        #endif
+    }
+
+    private var feedContent: some View {
         feedScroll
         .overlay {
             if visibleItems.isEmpty {
@@ -204,7 +214,11 @@ struct FeedView: View {
         .sheet(item: $ownFeedScope) { OwnFeedView(scope: $0) }
         .overlay(alignment: .bottom) { followToast }
         .overlay(alignment: .bottomTrailing) { composeButton }
+        #if os(macOS)
         .toolbar { feedToolbar }
+        #else
+        .toolbar { feedToolbarIOS }
+        #endif
         .sheet(isPresented: $showingBlueskyLogin) { BlueskyLoginView() }
         .sheet(isPresented: $showingMastodonLogin) { MastodonLoginView() }
         .sheet(isPresented: $showingNotifications) { NotificationsView() }
@@ -286,14 +300,58 @@ struct FeedView: View {
                     .accessibilityLabel("Refresh")
             }
         }
-        #if !os(macOS)
-        // macOS has Settings in the ⌘, menu; iOS surfaces it here.
-        ToolbarItem {
+    }
+
+    #if !os(macOS)
+    /// iPhone-fit toolbar: a couple of primary buttons plus an overflow menu, so everything
+    /// stays reachable within the nav bar's limited width. Compose stays the floating button.
+    @ToolbarContentBuilder private var feedToolbarIOS: some ToolbarContent {
+        ToolbarItem(placement: .topBarLeading) {
             Button { showingSettings = true } label: { Image(systemName: "gearshape") }
                 .accessibilityLabel("Settings")
         }
-        #endif
+        ToolbarItem(placement: .topBarTrailing) {
+            Button { showingSearch = true } label: { Image(systemName: "magnifyingglass") }
+                .accessibilityLabel("Search")
+        }
+        ToolbarItem(placement: .topBarTrailing) {
+            Button { showingNotifications = true } label: {
+                Image(systemName: notifications.unreadCount > 0 ? "bell.badge.fill" : "bell")
+                    .overlay(alignment: .topTrailing) { unreadBadge }
+            }
+            .accessibilityLabel(notifications.unreadCount > 0 ? "Notifications, \(notifications.unreadCount) unread" : "Notifications")
+        }
+        ToolbarItem(placement: .topBarTrailing) {
+            Menu {
+                if bothConnected {
+                    Picker("Show", selection: $networkFilter) {
+                        Label("Both Networks", systemImage: "person.2").tag(FeedFilter.both)
+                        Label("Bluesky", systemImage: "person").tag(FeedFilter.bluesky)
+                        Label("Mastodon", systemImage: "person").tag(FeedFilter.mastodon)
+                    }
+                    .pickerStyle(.inline)
+                }
+                Section {
+                    Button { liveMode.toggle() } label: {
+                        Label(liveMode ? "Turn Off Live Mode" : "Live Mode",
+                              systemImage: liveMode ? "dot.radiowaves.left.and.right" : "dot.radiowaves.right")
+                    }
+                    if !liveMode {
+                        Button { Task { await feed.refresh() } } label: { Label("Refresh", systemImage: "arrow.clockwise") }
+                    }
+                    if isScrolledAway && !liveMode {
+                        Button { scrollToTop() } label: { Label("Scroll to Top", systemImage: "arrow.up.to.line") }
+                    }
+                }
+                if !bluesky.isLoggedIn { Button("Add Bluesky Account") { showingBlueskyLogin = true } }
+                if !mastodon.isLoggedIn { Button("Add Mastodon Account") { showingMastodonLogin = true } }
+            } label: {
+                Image(systemName: "ellipsis.circle")
+            }
+            .accessibilityLabel("More")
+        }
     }
+    #endif
 
     private var composeButton: some View {
         Button { showingComposer = true } label: {
