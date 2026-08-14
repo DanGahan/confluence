@@ -228,6 +228,60 @@ final class ConfluenceUITests: XCTestCase {
         XCTAssertGreaterThan(count(), afterResume, "polling resumes after returning to the foreground")
     }
 
+    // #160: the Fonts & Colors appearance pane is reachable on iOS via Settings, with its
+    // controls present. (Live-apply of font/size/colour is a manual check — see IOS_VALIDATION.)
+    @MainActor
+    func testAppearanceSettingsReachableOnIOS() throws {
+        try XCTSkipUnless(isIOS, "Element queries are unreliable on macOS UI tests.")
+        let app = XCUIApplication()
+        app.launchArguments = ["-uiTestMockFeed"]
+        app.launch()
+        app.buttons["Settings"].tap()
+        app.buttons["Fonts & Colors"].tap()
+        XCTAssertTrue(app.buttons["Reset to Default"].waitForExistence(timeout: 10), app.debugDescription)
+    }
+
+    // #159: the composer's photo-attach control is present on iOS (the picker itself is the
+    // system Photos UI — attaching an image is a manual check).
+    @MainActor
+    func testComposerHasPhotoAttachOnIOS() throws {
+        try XCTSkipUnless(isIOS, "Element queries are unreliable on macOS UI tests.")
+        let app = XCUIApplication()
+        app.launchArguments = ["-uiTestMockFeed"]
+        app.launch()
+        app.buttons["New Post"].tap()
+        XCTAssertTrue(app.buttons["Attach photo"].waitForExistence(timeout: 10), app.debugDescription)
+    }
+
+    // #162: the Bluesky login sheet presents on iOS (the OAuth/app-password round-trip needs
+    // real credentials — a manual check).
+    @MainActor
+    func testBlueskyLoginSheetPresentsOnIOS() throws {
+        try XCTSkipUnless(isIOS, "Element queries are unreliable on macOS UI tests.")
+        let app = XCUIApplication()
+        app.launchArguments = ["-uiTestLoggedOut"]
+        app.launch()
+        app.buttons["Add Bluesky Account"].tap()
+        // BlueskyLoginView asks for a handle + app password — assert a secure field appears.
+        XCTAssertTrue(app.secureTextFields.firstMatch.waitForExistence(timeout: 10), app.debugDescription)
+    }
+
+    // #159: removing an image attachment before posting must not crash. Regression test for
+    // the enumerated-index binding bug — with the old code this crashed on remove.
+    @MainActor
+    func testRemovingComposerAttachmentDoesNotCrash() throws {
+        try XCTSkipUnless(isIOS, "Element queries are unreliable on macOS UI tests.")
+        let app = XCUIApplication()
+        app.launchArguments = ["-uiTestMockFeed", "-uiTestComposerAttachment"]
+        app.launch()
+        app.buttons["New Post"].tap()
+        let remove = app.buttons["Remove attachment"]
+        XCTAssertTrue(remove.waitForExistence(timeout: 10), app.debugDescription)
+        remove.tap()
+        // The bug crashed here; the app must stay alive and the composer stay usable.
+        XCTAssertTrue(app.buttons["Attach photo"].waitForExistence(timeout: 5), app.debugDescription)
+    }
+
     private var isIOS: Bool {
         #if os(iOS)
         true
