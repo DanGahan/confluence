@@ -48,7 +48,7 @@ struct OwnFeedView: View {
                                 Divider()
                             }
                         }
-                        .frame(width: contentWidth, alignment: .leading)
+                        .frame(maxWidth: contentWidth, alignment: .leading)
                         .padding(16)
                     }
                 } else if loading {
@@ -59,7 +59,9 @@ struct OwnFeedView: View {
             }
             .navigationTitle("My Posts — \(scope.title)")
         }
-        .frame(width: contentWidth + 32, height: 620)
+        #if os(macOS)
+        .frame(width: contentWidth + 32, height: 620) // macOS sheet size; iOS fills the sheet
+        #endif
         .overlay(alignment: .topLeading) { SheetCloseButton { dismiss() }.padding(12) }
         .handleProfileLinks()
         .task { await load() }
