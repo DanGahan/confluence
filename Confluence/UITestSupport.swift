@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 import ConfluenceKit
 
 /// Launch-argument switches used by the XCUITest suite. Runtime-only; a normal launch passes
@@ -11,13 +12,22 @@ enum UITestLaunch {
     static let mockFeed = ProcessInfo.processInfo.arguments.contains("-uiTestMockFeed")
 }
 
+/// Observable fetch counter so a UI test can watch live-mode polling start/stop (#169).
+@MainActor @Observable final class MockFeedCounter { var fetches = 0 }
+
 /// Canned feed for `-uiTestMockFeed`. Posts carry stable, assertable text and a mix of a
 /// web link and an in-app @-mention (profile) link so tests can drive the link paths.
 enum MockFeed {
+    @MainActor static let counter = MockFeedCounter()
+
     /// A single-network page fetcher returning the canned posts; wired into FeedStore in place
-    /// of the real network fetchers when `-uiTestMockFeed` is set.
+    /// of the real network fetchers when `-uiTestMockFeed` is set. Each call bumps the counter
+    /// so a test can observe polling cadence.
     static func fetchers() -> [Network: PageFetcher] {
-        [.bluesky: { _ in FeedPage(items: items, nextCursor: nil) }]
+        [.bluesky: { _ in
+            await MainActor.run { counter.fetches += 1 }
+            return FeedPage(items: items, nextCursor: nil)
+        }]
     }
 
     static let items: [FeedItem] = [

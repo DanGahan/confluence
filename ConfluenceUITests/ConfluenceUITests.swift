@@ -177,6 +177,57 @@ final class ConfluenceUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Zoom in"].waitForExistence(timeout: 5), app.debugDescription)
     }
 
+    // #169: live mode polls in the foreground and stops when turned off. The poll loop is keyed
+    // on `liveMode && scenePhase == .active`, so "off" and "backgrounded" share the same
+    // task-cancellation path. Poll interval is 2s under -uiTestMockFeed.
+    @MainActor
+    func testLiveModePollsInForegroundAndStopsWhenOff() throws {
+        try XCTSkipUnless(isIOS, "Element queries are unreliable on macOS UI tests.")
+        let app = XCUIApplication()
+        app.launchArguments = ["-uiTestMockFeed"]
+        app.launch()
+        XCTAssertTrue(app.staticTexts["mockFetchCount"].waitForExistence(timeout: 15))
+        func count() -> Int { Int(app.staticTexts["mockFetchCount"].label) ?? -1 }
+
+        // Turn live mode on via the overflow menu.
+        app.buttons["More"].tap()
+        app.buttons["Live Mode"].tap()
+        let before = count()
+        Thread.sleep(forTimeInterval: 6) // ~3 ticks at the 2s mock interval
+        XCTAssertGreaterThan(count(), before, "live mode should poll in the foreground")
+
+        // Turn live mode off — polling must stop.
+        app.buttons["More"].tap()
+        app.buttons["Turn Off Live Mode"].tap()
+        let atOff = count()
+        Thread.sleep(forTimeInterval: 6)
+        XCTAssertLessThanOrEqual(count() - atOff, 1, "polling should stop when live mode is off")
+    }
+
+    // #169: backgrounding suspends live-mode polling and returning to the foreground resumes it
+    // (the scenePhase != .active transition cancels the task; .active restarts it).
+    @MainActor
+    func testLiveModeResumesAfterForegrounding() throws {
+        try XCTSkipUnless(isIOS, "Element queries are unreliable on macOS UI tests.")
+        let app = XCUIApplication()
+        app.launchArguments = ["-uiTestMockFeed"]
+        app.launch()
+        XCTAssertTrue(app.staticTexts["mockFetchCount"].waitForExistence(timeout: 15))
+        func count() -> Int { Int(app.staticTexts["mockFetchCount"].label) ?? -1 }
+
+        app.buttons["More"].tap()
+        app.buttons["Live Mode"].tap()
+
+        XCUIDevice.shared.press(.home) // background → scenePhase leaves .active, polling suspends
+        Thread.sleep(forTimeInterval: 3)
+        app.activate()                 // foreground → scenePhase .active, polling resumes
+
+        XCTAssertTrue(app.staticTexts["mockFetchCount"].waitForExistence(timeout: 10), "feed survives backgrounding")
+        let afterResume = count()
+        Thread.sleep(forTimeInterval: 6)
+        XCTAssertGreaterThan(count(), afterResume, "polling resumes after returning to the foreground")
+    }
+
     private var isIOS: Bool {
         #if os(iOS)
         true
