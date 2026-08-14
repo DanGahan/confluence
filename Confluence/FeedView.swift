@@ -150,6 +150,11 @@ struct FeedView: View {
             }
         }
         .task(id: accountsKey) {
+            if UITestLaunch.mockFeed {
+                feed.setFetchers(MockFeed.fetchers())
+                await feed.refresh()
+                return
+            }
             let wiring = FeedWiring(bluesky: bluesky, mastodon: mastodon)
             feed.setFetchers(wiring.pageFetchers())
             follows.setActions(wiring.followActions())
