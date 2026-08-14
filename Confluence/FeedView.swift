@@ -45,7 +45,8 @@ struct FeedView: View {
     @State private var liveMode = false
 
     /// How often live mode polls. ponytail: fixed; make it a setting if people want control.
-    private let livePollInterval: Duration = .seconds(12)
+    /// Mock-feed UI tests use a short interval so the live-mode poll cadence is observable fast.
+    private var livePollInterval: Duration { UITestLaunch.mockFeed ? .seconds(2) : .seconds(12) }
     private let position = FeedPositionStore()
 
     private var accountsKey: String {
@@ -153,6 +154,14 @@ struct FeedView: View {
 
     private var feedContent: some View {
         feedScroll
+        // Invisible live-mode poll counter for the #169 UI test; present only under -uiTestMockFeed.
+        .overlay(alignment: .topLeading) {
+            if UITestLaunch.mockFeed {
+                Text(verbatim: "\(MockFeed.counter.fetches)")
+                    .opacity(0.001)
+                    .accessibilityIdentifier("mockFetchCount")
+            }
+        }
         .overlay {
             if visibleItems.isEmpty {
                 if feed.isLoading {
