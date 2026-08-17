@@ -2,7 +2,12 @@ import SwiftUI
 import ConfluenceKit
 
 struct SettingsView: View {
+    @Environment(\.dismiss) private var dismiss
+    @AppStorage(BrowsingPreference.openLinksInAppKey) private var openLinksInApp = BrowsingPreference.openLinksInAppDefault
+
     var body: some View {
+        #if os(macOS)
+        // macOS Settings window: tabbed panes at a fixed size.
         TabView {
             AccountsSettings()
                 .tabItem { Label("Accounts", systemImage: "person.2") }
@@ -12,6 +17,31 @@ struct SettingsView: View {
                 .tabItem { Label("Media Preview", systemImage: "photo") }
         }
         .frame(width: 480, height: 380)
+        #else
+        // iOS has no Settings scene, so this is presented as a sheet from the feed toolbar:
+        // a navigation list into the same panes, plus About (which is a menu window on macOS).
+        NavigationStack {
+            List {
+                NavigationLink { AccountsSettings().navigationTitle("Accounts") } label: {
+                    Label("Accounts", systemImage: "person.2")
+                }
+                NavigationLink { AppearanceSettings().navigationTitle("Fonts & Colors") } label: {
+                    Label("Fonts & Colors", systemImage: "textformat")
+                }
+                NavigationLink { MediaSettings().navigationTitle("Media Preview") } label: {
+                    Label("Media Preview", systemImage: "photo")
+                }
+                NavigationLink { AboutView().navigationTitle("About") } label: {
+                    Label("About", systemImage: "info.circle")
+                }
+                Section("Browsing") {
+                    Toggle("Open links in app", isOn: $openLinksInApp)
+                }
+            }
+            .navigationTitle("Settings")
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+        }
+        #endif
     }
 }
 

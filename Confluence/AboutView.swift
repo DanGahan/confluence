@@ -8,8 +8,8 @@ struct AboutView: View {
 
     var body: some View {
         VStack(spacing: 14) {
-            if let icon = NSImage(named: "AppIcon") {
-                Image(nsImage: icon)
+            if let icon = PlatformImage(named: "AppIcon") {
+                Image(platformImage: icon)
                     .resizable()
                     .frame(width: 96, height: 96)
             } else {
@@ -36,7 +36,11 @@ struct AboutView: View {
                 .padding(.top, 4)
         }
         .padding(30)
-        .frame(width: 340)
+        #if os(macOS)
+        .frame(width: 340) // fixed About-panel width on macOS; iOS uses natural width (fits iPhone SE)
+        #else
+        .frame(maxWidth: 340)
+        #endif
     }
 
     @ViewBuilder private var commitRow: some View {
@@ -47,7 +51,7 @@ struct AboutView: View {
                 Label("Commit \(BuildInfo.commitShort)", systemImage: "chevron.left.forwardslash.chevron.right")
                     .font(.caption.monospacedDigit())
             }
-            .buttonStyle(.link)
+            .buttonStyle(.borderless) // `.link` is macOS-only; `.borderless` reads as a link on both
             .accessibilityLabel("Open commit \(BuildInfo.commit) on GitHub")
         } else {
             Text("Commit local")
@@ -57,6 +61,7 @@ struct AboutView: View {
     }
 }
 
+#if os(macOS)
 /// Opens the custom About window instead of the default one macOS synthesises.
 enum AboutWindow {
     static func show() {
@@ -75,3 +80,4 @@ enum AboutWindow {
         NSApp.activate(ignoringOtherApps: true)
     }
 }
+#endif

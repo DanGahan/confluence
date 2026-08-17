@@ -9,3 +9,8 @@ DerivedData/
 # Release-workflow build output (see docs/RELEASING.md dry-run).
 build/
 artefact/
+.DS_Store
+
+# Xcode per-user state
+**/xcuserdata/
+*.xcuserstate

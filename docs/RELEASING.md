@@ -14,11 +14,17 @@ before their build step, so a red CI blocks a release. Jobs:
 - **Build (app target, unsigned)** — `xcodebuild build` at Debug with signing
   disabled. Catches app-target compile regressions that `swift test` on the
   kit doesn't see.
+- **Build (iOS app, simulator)** — `xcodebuild build` for
+  `generic/platform=iOS Simulator`, signing off. Catches iOS-specific
+  regressions (an AppKit-only API slipping in, a missing `#if os()` gate) on
+  the shared codebase. Release workflows are macOS-only, so this gates PRs but
+  isn't invoked by a release build.
 - **SAST (Semgrep)** — `semgrep --config=p/default` on a Linux runner
   (source-only, no macOS toolchain needed). Findings surface on the Security
-  tab as SARIF. We tried CodeQL first; its Swift extractor hung >30 min
-  against Swift 6.2 / macOS 26 SDK under both `manual` and `autobuild` modes.
-  Revisit if GitHub ships a working Swift 6.2 extractor.
+  tab as SARIF. Semgrep owns **Swift** scanning: we tried CodeQL first, but its
+  Swift extractor hung >30 min against Swift 6.2 / macOS 26 SDK under both
+  `manual` and `autobuild` modes. Revisit if GitHub ships a working Swift 6.2
+  extractor.
 
 Not in CI by design:
 
@@ -29,6 +35,12 @@ Not in CI by design:
 
 Passive checks (no CI change needed):
 
+- **CodeQL default setup (Actions only)** — GitHub-native, scans workflow
+  files for Actions misconfig (e.g. unpinned tokens / missing `permissions`).
+  Runs on `main` + PRs, uploads to the Security tab. Scoped to `actions` on
+  purpose: Swift is Semgrep's job (the CodeQL Swift extractor is the one that
+  hung, above), so leaving Swift in default setup was redundant and re-ran the
+  flaky path.
 - **Secret scanning** — GitHub-native, on for public repos.
 - **Dependabot** — `.github/dependabot.yml` opens weekly PRs against `dev`
   for GitHub Actions updates.
@@ -103,6 +115,35 @@ proves a human made the choice.
 
 Subsequent launches (and later versions replacing the same bundle) don't
 re-prompt.
+
+## Homebrew
+
+Both tracks are also installable via a Homebrew tap,
+[`DanGahan/homebrew-confluence`](https://github.com/DanGahan/homebrew-confluence)
+(separate repo — Homebrew requires the `homebrew-` name prefix, and its
+auto-update bot commits to its own `main` rather than ours):
+
+```sh
+brew tap DanGahan/confluence
+brew install --cask confluence          # prod (latest release)
+brew install --cask confluence@dev       # dev prerelease track
+```
+
+Because the app is ad-hoc signed, first launch still hits Gatekeeper. Homebrew
+**removed `--no-quarantine`** (its old bypass), so the tap's caveats tell users
+to clear quarantine once after install:
+
+```sh
+xattr -r -d com.apple.quarantine "/Applications/Confluence.app"
+```
+
+The tap needs no manual bumping: a workflow in the tap repo polls this repo's
+releases hourly and commits the refreshed `version` + `sha256` into each cask.
+
+> **⚠️ Expiry (1 Sep 2026):** Homebrew is ending support for casks that fail
+> Gatekeeper checks. Confluence fails by definition until it's **notarised**
+> (Apple Developer ID). The `xattr` workaround is a stopgap until then;
+> notarisation is the real fix and removes the workaround entirely.
 
 ## Cutting a prod release
 

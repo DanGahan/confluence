@@ -2,7 +2,8 @@ import Foundation
 
 extension MastodonClient {
     /// `POST /api/v1/statuses` — publishes a status, optionally attaching uploaded media.
-    public func post(host: String, accessToken: String, text: String, mediaIDs: [String] = []) async throws {
+    public func post(host: String, accessToken: String, text: String, mediaIDs: [String] = [],
+                     inReplyToID: String? = nil) async throws {
         var components = URLComponents()
         components.scheme = "https"
         components.host = host
@@ -15,6 +16,7 @@ extension MastodonClient {
         var body = URLComponents()
         body.queryItems = [URLQueryItem(name: "status", value: text)]
             + mediaIDs.map { URLQueryItem(name: "media_ids[]", value: $0) }
+            + (inReplyToID.map { [URLQueryItem(name: "in_reply_to_id", value: $0)] } ?? [])
         request.httpBody = body.percentEncodedQuery?.data(using: .utf8)
 
         let response: URLResponse

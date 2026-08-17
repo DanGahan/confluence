@@ -1,5 +1,6 @@
 import SwiftUI
 
+#if os(macOS)
 /// A close control that mimics the standard macOS window close button — a single red dot
 /// (no minimise/zoom) that shows an ✕ on hover and greys out when the window is inactive,
 /// following the OS the way the real traffic-light close does. Placed top-left of a sheet.
@@ -42,3 +43,11 @@ struct SheetCloseButton: View {
         .accessibilityLabel("Close")
     }
 }
+#else
+/// iOS: no explicit close button — sheets swipe-to-dismiss, which is self-explanatory (#191).
+/// Kept as an empty view so the shared call sites don't need per-platform gating.
+struct SheetCloseButton: View {
+    let action: () -> Void
+    var body: some View { EmptyView() }
+}
+#endif

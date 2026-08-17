@@ -44,7 +44,9 @@ struct SearchView: View {
             Divider()
             content
         }
+        #if os(macOS)
         .frame(minWidth: 420, minHeight: 520)
+        #endif
         .handleProfileLinks()
         .onAppear { fieldFocused = true }
         .onDisappear { search.clear() } // results aren't kept; recents are (persisted separately)

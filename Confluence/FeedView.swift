@@ -1,5 +1,7 @@
 import SwiftUI
+#if os(macOS)
 import AppKit
+#endif
 import ConfluenceKit
 
 /// Which network(s) the feed shows. Filtering is client-side over the already-merged list.
@@ -31,6 +33,9 @@ struct FeedView: View {
     @State private var showingNotifications = false
     @State private var showingSearch = false
     @State private var showingComposer = false
+    #if !os(macOS)
+    @State private var showingSettings = false // iOS has no Settings scene; reach it from the toolbar
+    #endif
     @State private var networkFilter: FeedFilter = .both
     @State private var ownFeedScope: OwnFeedScope?
     @State private var topID: String?
@@ -40,7 +45,8 @@ struct FeedView: View {
     @State private var liveMode = false
 
     /// How often live mode polls. ponytail: fixed; make it a setting if people want control.
-    private let livePollInterval: Duration = .seconds(12)
+    /// Mock-feed UI tests use a short interval so the live-mode poll cadence is observable fast.
+    private var livePollInterval: Duration { UITestLaunch.mockFeed ? .seconds(2) : .seconds(12) }
     private let position = FeedPositionStore()
 
     private var accountsKey: String {
@@ -122,6 +128,7 @@ struct FeedView: View {
         } action: { _, nearBottom in
             if nearBottom { Task { await feed.loadMore() } }
         }
+        .refreshable { await feed.refresh() } // pull-to-refresh (iOS); harmless on macOS
     }
 
     private func scheduleSave(_ id: String?) {
@@ -137,7 +144,25 @@ struct FeedView: View {
     }
 
     var body: some View {
+        #if os(macOS)
+        // macOS gets its toolbar from the window; no NavigationStack needed.
+        feedContent
+        #else
+        // iOS: a NavigationStack is required for `.toolbar` to render a navigation bar at all.
+        NavigationStack { feedContent.navigationBarTitleDisplayMode(.inline) }
+        #endif
+    }
+
+    private var feedContent: some View {
         feedScroll
+        // Invisible live-mode poll counter for the #169 UI test; present only under -uiTestMockFeed.
+        .overlay(alignment: .topLeading) {
+            if UITestLaunch.mockFeed {
+                Text(verbatim: "\(MockFeed.counter.fetches)")
+                    .opacity(0.001)
+                    .accessibilityIdentifier("mockFetchCount")
+            }
+        }
         .overlay {
             if visibleItems.isEmpty {
                 if feed.isLoading {
@@ -148,6 +173,11 @@ struct FeedView: View {
             }
         }
         .task(id: accountsKey) {
+            if UITestLaunch.mockFeed {
+                feed.setFetchers(MockFeed.fetchers())
+                await feed.refresh()
+                return
+            }
             let wiring = FeedWiring(bluesky: bluesky, mastodon: mastodon)
             feed.setFetchers(wiring.pageFetchers())
             follows.setActions(wiring.followActions())
@@ -194,11 +224,20 @@ struct FeedView: View {
         .sheet(item: $ownFeedScope) { OwnFeedView(scope: $0) }
         .overlay(alignment: .bottom) { followToast }
         .overlay(alignment: .bottomTrailing) { composeButton }
+        #if os(macOS)
         .toolbar { feedToolbar }
+        #else
+        .toolbar { feedToolbarIOS }
+        #endif
         .sheet(isPresented: $showingBlueskyLogin) { BlueskyLoginView() }
         .sheet(isPresented: $showingMastodonLogin) { MastodonLoginView() }
         .sheet(isPresented: $showingNotifications) { NotificationsView() }
         .sheet(isPresented: $showingSearch) { SearchView() }
+        #if !os(macOS)
+        .sheet(isPresented: $showingSettings) {
+            SettingsView().environment(bluesky).environment(mastodon)
+        }
+        #endif
         .sheet(isPresented: $showingComposer, onDismiss: {
             if composer.didPostAll { composer.reset(); Task { await feed.refresh() } }
         }) { ComposerView() }
@@ -273,6 +312,72 @@ struct FeedView: View {
         }
     }
 
+    #if !os(macOS)
+    /// iPhone-fit toolbar: a couple of primary buttons plus an overflow menu, so everything
+    /// stays reachable within the nav bar's limited width. Compose stays the floating button.
+    @ToolbarContentBuilder private var feedToolbarIOS: some ToolbarContent {
+        // Dedicated network-filter button (person.2 for combined, person for a single network),
+        // matching macOS — in the slot Settings vacated (#188).
+        ToolbarItem(placement: .topBarLeading) {
+            Menu {
+                if bothConnected {
+                    Picker("Show", selection: $networkFilter) {
+                        Label("Both Networks", systemImage: "person.2").tag(FeedFilter.both)
+                        Label("Bluesky", systemImage: "person").tag(FeedFilter.bluesky)
+                        Label("Mastodon", systemImage: "person").tag(FeedFilter.mastodon)
+                    }
+                    .pickerStyle(.inline)
+                }
+                if !bluesky.isLoggedIn { Button("Add Bluesky Account") { showingBlueskyLogin = true } }
+                if !mastodon.isLoggedIn { Button("Add Mastodon Account") { showingMastodonLogin = true } }
+            } label: {
+                Image(systemName: (networkFilter == .both && bothConnected) ? "person.2" : "person")
+            }
+            .accessibilityLabel(filterHelp)
+        }
+        // Tap the feed title to scroll to top (#189).
+        ToolbarItem(placement: .principal) {
+            Button { scrollToTop() } label: {
+                Text(networkFilter.title).font(.headline).foregroundStyle(.primary)
+            }
+            .accessibilityLabel("\(networkFilter.title) feed. Scroll to top.")
+        }
+        ToolbarItem(placement: .topBarTrailing) {
+            Button { showingSearch = true } label: { Image(systemName: "magnifyingglass") }
+                .accessibilityLabel("Search")
+        }
+        ToolbarItem(placement: .topBarTrailing) {
+            Button { showingNotifications = true } label: {
+                Image(systemName: notifications.unreadCount > 0 ? "bell.badge.fill" : "bell")
+                    .overlay(alignment: .topTrailing) { unreadBadge }
+            }
+            .accessibilityLabel(notifications.unreadCount > 0 ? "Notifications, \(notifications.unreadCount) unread" : "Notifications")
+        }
+        ToolbarItem(placement: .topBarTrailing) {
+            Menu {
+                Section {
+                    Button { liveMode.toggle() } label: {
+                        Label(liveMode ? "Turn Off Live Mode" : "Live Mode",
+                              systemImage: liveMode ? "dot.radiowaves.left.and.right" : "dot.radiowaves.right")
+                    }
+                    if !liveMode {
+                        Button { Task { await feed.refresh() } } label: { Label("Refresh", systemImage: "arrow.clockwise") }
+                    }
+                    if isScrolledAway && !liveMode {
+                        Button { scrollToTop() } label: { Label("Scroll to Top", systemImage: "arrow.up.to.line") }
+                    }
+                }
+                Section {
+                    Button { showingSettings = true } label: { Label("Settings", systemImage: "gearshape") }
+                }
+            } label: {
+                Image(systemName: "ellipsis.circle")
+            }
+            .accessibilityLabel("More")
+        }
+    }
+    #endif
+
     private var composeButton: some View {
         Button { showingComposer = true } label: {
             Image(systemName: "square.and.pencil")
@@ -284,6 +389,9 @@ struct FeedView: View {
         }
         .buttonStyle(.plain)
         .padding(20)
+        #if !os(macOS)
+        .padding(.bottom, -8) // sit a little lower for thumb reach (#192)
+        #endif
         .help("New Post (⌘N)")
         .accessibilityLabel("New Post")
     }
@@ -386,6 +494,7 @@ struct FeedRow: View {
     let item: FeedItem
     @State private var showingProfile = false
     @State private var showingThread = false
+    @State private var replyExpanded = false
     @State private var lightbox: LightboxItem?
     @State private var confirmingBlock = false
     @State private var confirmingDelete = false
@@ -421,8 +530,7 @@ struct FeedRow: View {
                         .foregroundStyle(.secondary)
                 }
                 HStack(spacing: 6) {
-                    Text(item.authorName).fontWeight(.semibold).lineLimit(1)
-                    Text("@\(item.authorHandle)").foregroundStyle(.secondary).lineLimit(1)
+                    AuthorLabel(item: item)
                     Spacer(minLength: 4)
                     networkBadge
                     Text(item.createdAt, format: .relative(presentation: .named))
@@ -432,6 +540,16 @@ struct FeedRow: View {
                 }
                 if !item.text.isEmpty {
                     RichTextLabel(attributed: item.attributedText, openURL: openURL, fontName: fontName, fontSize: fontSize, linkColorHex: linkColorHex)
+                        #if !os(macOS)
+                        // Make the post text itself a reliable, large reply-expand target (#187):
+                        // a catcher behind the text so tapping non-link text toggles the reply
+                        // box (finger taps near the top no longer land on the username). Links
+                        // sit in front and still open.
+                        .background(
+                            Color.clear.contentShape(Rectangle())
+                                .onTapGesture { withAnimation(.snappy(duration: 0.2)) { replyExpanded.toggle() } }
+                        )
+                        #endif
                 }
                 if !item.imageURLs.isEmpty {
                     PostImages(urls: item.imageURLs, letterboxHeight: 140) { start, images in
@@ -456,13 +574,10 @@ struct FeedRow: View {
             }
         }
         .padding(.vertical, 4)
-        // Hittable-but-invisible backing so right-click works on the row's gaps too. Using a
-        // background (not .contentShape) keeps SwiftUI from owning the cursor, so the text
-        // view's pointing-hand hover over links still wins.
-        .background(Color.black.opacity(0.001))
-        // Click the post (chrome/text — links, avatar, images consume their own clicks) to open
-        // its thread, same as the "Show thread" affordance.
-        .onTapGesture { if item.hasThread { showingThread = true } }
+        // Click the post body (chrome/text — avatar, username, media, links and the "N replies"
+        // button consume their own clicks) to expand an inline reply box. quickReply also
+        // provides the invisible hittable backing right-click needs on the row's gaps.
+        .quickReply(item, expanded: $replyExpanded)
         .contextMenu { postMenu }
         .confirmationDialog("Block @\(item.authorHandle)?", isPresented: $confirmingBlock, titleVisibility: .visible) {
             Button("Block", role: .destructive) { Task { await postActions.block(item) } }
@@ -477,12 +592,16 @@ struct FeedRow: View {
             Text("This permanently deletes the post on \(networkName).")
         }
         .sheet(item: $lightbox) { ImageLightbox(item: $0) }
-        .accessibilityElement(children: .combine)
+        // Combine the row into one VoiceOver element normally; under UI tests keep children
+        // addressable (combine collapses sub-element frames to the row, breaking tap targeting).
+        .accessibilityElement(children: UITestLaunch.mockFeed ? .contain : .combine)
         .accessibilityLabel(accessibilitySummary)
         .accessibilityAction(named: followLabel) { Task { await follows.toggle(item) } }
     }
 
     @ViewBuilder private var postMenu: some View {
+        Button("Reply", systemImage: "arrowshape.turn.up.left") { replyExpanded = true }
+        Divider()
         Button(postActions.isReposted(item) ? "Undo Repost" : "Repost", systemImage: "arrow.2.squarepath") {
             Task { await postActions.toggleRepost(item) }
         }
@@ -493,9 +612,12 @@ struct FeedRow: View {
         if let url = item.postURL {
             Divider()
             ShareLink(item: url) { Label("Share…", systemImage: "square.and.arrow.up") }
+            #if os(macOS)
+            // Safari Reading List has no public iOS API; ShareLink covers sharing on iOS.
             Button("Add to Reading List", systemImage: "eyeglasses") {
                 NSSharingService(named: .addToSafariReadingList)?.perform(withItems: [url])
             }
+            #endif
         }
         Divider()
         if postActions.isOwn(item) {

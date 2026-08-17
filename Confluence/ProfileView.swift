@@ -36,12 +36,14 @@ struct ProfileView: View {
                         Text("No posts.").foregroundStyle(.secondary).padding()
                     }
                 }
-                .frame(width: contentWidth, alignment: .leading) // hard width: a long URL can't stretch the sheet
+                .frame(maxWidth: contentWidth, alignment: .leading) // hard width: a long URL can't stretch the sheet
                 .padding(16)
             }
             .navigationTitle("@\(handle)")
         }
-        .frame(width: contentWidth + 32, height: 620)
+        #if os(macOS)
+        .frame(width: contentWidth + 32, height: 620) // macOS sheet size; iOS fills the sheet
+        #endif
         .overlay(alignment: .topLeading) { SheetCloseButton { dismiss() }.padding(12) }
         .handleProfileLinks()
         .task { await load() }
@@ -117,6 +119,7 @@ private struct ProfilePostRow: View {
     @AppStorage(PostAppearance.linkColorKey) private var linkColorHex = PostAppearance.defaultLinkColorHex
     let post: FeedItem
     @State private var showingThread = false
+    @State private var replyExpanded = false
     @State private var lightbox: LightboxItem?
     private var threadLabel: String {
         switch post.replyCount {
@@ -158,6 +161,10 @@ private struct ProfilePostRow: View {
             Divider()
         }
         .padding(.vertical, 4)
+        .quickReply(post, expanded: $replyExpanded)
+        .contextMenu {
+            Button("Reply", systemImage: "arrowshape.turn.up.left") { replyExpanded = true }
+        }
         .sheet(isPresented: $showingThread) { ThreadView(item: post) }
         .sheet(item: $lightbox) { ImageLightbox(item: $0) }
     }

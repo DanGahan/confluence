@@ -10,6 +10,8 @@ struct PostActionStoreTests {
         var repostCalls = 0
         var unrepostURIs: [String?] = []
         var failRepost = false
+        var replyTexts: [String] = []
+        var failReply = false
     }
 
     func item(_ id: String = "p1") -> FeedItem {
@@ -29,9 +31,27 @@ struct PostActionStoreTests {
             like: { _ in "at://like" },
             unlike: { _, _ in },
             block: { _ in },
-            delete: { _ in }
+            delete: { _ in },
+            reply: { _, text in
+                rec.replyTexts.append(text)
+                if rec.failReply { throw BlueskyError.network }
+            }
         )])
         return store
+    }
+
+    @Test func replyForwardsTextToNetworkAction() async throws {
+        let rec = Recorder()
+        let sut = makeStore(rec)
+        try await sut.reply(item(), text: "great post")
+        #expect(rec.replyTexts == ["great post"])
+    }
+
+    @Test func replyRethrowsOnFailure() async {
+        let rec = Recorder()
+        rec.failReply = true
+        let sut = makeStore(rec)
+        await #expect(throws: BlueskyError.self) { try await sut.reply(item(), text: "x") }
     }
 
     @Test func toggleRepostThenUndoPassesBackStoredURI() async {

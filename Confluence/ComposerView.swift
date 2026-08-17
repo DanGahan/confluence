@@ -1,5 +1,7 @@
 import SwiftUI
+#if os(macOS)
 import AppKit
+#endif
 import PhotosUI
 import ConfluenceKit
 
@@ -96,8 +98,15 @@ struct ComposerView: View {
             }
         }
         .padding(20)
-        .frame(width: 460)
-        .onAppear { editorFocused = true }
+        #if os(macOS)
+        .frame(width: 460) // macOS composer width; iOS fills the sheet
+        #endif
+        .onAppear {
+            editorFocused = true
+            if UITestLaunch.composerAttachment && composerStore.attachments.isEmpty {
+                composerStore.attachments = [MockComposer.attachment]
+            }
+        }
         .task { await load() }
     }
 
@@ -162,7 +171,10 @@ struct ComposerView: View {
         let full = composer.attachments.count >= ComposerStore.maxAttachments
         HStack(spacing: 12) {
             Menu {
+                #if os(macOS)
+                // File picker is NSOpenPanel (macOS); iOS uses the Photos library only.
                 Button("Choose File…", systemImage: "folder") { pickPhotosFromFiles(composer) }
+                #endif
                 Button("Photo Library…", systemImage: "photo.stack") { showingLibrary = true }
             } label: {
                 Image(systemName: "photo.on.rectangle")
@@ -170,6 +182,7 @@ struct ComposerView: View {
             .menuIndicator(.hidden)
             .frame(width: 28)
             .help("Attach Photo")
+            .accessibilityLabel("Attach photo") // was unlabelled — VoiceOver read nothing
             .disabled(full)
             .photosPicker(isPresented: $showingLibrary, selection: $pickerItems,
                           maxSelectionCount: ComposerStore.maxAttachments - composer.attachments.count, matching: .images)
@@ -188,7 +201,7 @@ struct ComposerView: View {
             let room = ComposerStore.maxAttachments - composer.attachments.count
             guard room > 0 else { break }
             if let raw = try? await item.loadTransferable(type: Data.self),
-               let image = NSImage(data: raw), let data = jpegData(from: image) {
+               let image = PlatformImage(data: raw), let data = jpegData(from: image) {
                 composer.attachments.append(Attachment(data: data))
             }
         }
@@ -198,11 +211,18 @@ struct ComposerView: View {
     private func attachmentChips(_ composer: ComposerStore) -> some View {
         @Bindable var composer = composer
         return HStack(spacing: 8) {
-            ForEach(Array(composer.attachments.enumerated()), id: \.element.id) { i, attachment in
-                if let image = NSImage(data: attachment.data) {
+            // Binding-based ForEach: stable per-element bindings + removal by id. The old
+            // enumerated()/`$attachments[i]` form crashed when an attachment was removed — the
+            // stale positional-index binding evaluated out of range during the SwiftUI update.
+            ForEach($composer.attachments) { $attachment in
+                if let image = PlatformImage(data: attachment.data) {
+                    // Capture the id as a plain value: reading `attachment` (a binding projection
+                    // into composer.attachments) inside removeAll would be a simultaneous access
+                    // to the array being mutated — an exclusivity crash.
+                    let id = attachment.id
                     AttachmentChip(image: image,
-                                   alt: $composer.attachments[i].alt,
-                                   onRemove: { composer.attachments.remove(at: i) })
+                                   alt: $attachment.alt,
+                                   onRemove: { composer.attachments.removeAll { $0.id == id } })
                 }
             }
         }
@@ -229,6 +249,7 @@ struct ComposerView: View {
         .padding(12)
     }
 
+    #if os(macOS)
     private func pickPhotosFromFiles(_ composer: ComposerStore) {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.image]
@@ -241,6 +262,7 @@ struct ComposerView: View {
             }
         }
     }
+    #endif
 
     // MARK: @-mention autocomplete
 
@@ -329,7 +351,7 @@ struct ComposerView: View {
 /// Attachment thumbnail with a remove button, an "ALT" badge, and a popover to enter the
 /// image description. The badge fills in when alt is provided so the state is visible at a glance.
 private struct AttachmentChip: View {
-    let image: NSImage
+    let image: PlatformImage
     @Binding var alt: String
     let onRemove: () -> Void
 
@@ -339,7 +361,7 @@ private struct AttachmentChip: View {
     private var hasAlt: Bool { !alt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
     var body: some View {
-        Image(nsImage: image).resizable().scaledToFill()
+        Image(platformImage: image).resizable().scaledToFill()
             .frame(width: 56, height: 56).clipShape(RoundedRectangle(cornerRadius: 6))
             .overlay(alignment: .topTrailing) {
                 Button { onRemove() } label: {
@@ -395,11 +417,11 @@ private struct AttachmentChip: View {
 
 /// Downscales an image and returns JPEG data under the size both networks accept (Bluesky caps
 /// blobs at ~1 MB). ponytail: fixed 1600px / 0.8 quality; HEIC support pending.
-private func jpegData(from image: NSImage, maxDimension: CGFloat = 1600, maxBytes: Int = 900_000) -> Data? {
+private func jpegData(from image: PlatformImage, maxDimension: CGFloat = 1600, maxBytes: Int = 900_000) -> Data? {
     let size = image.size
     let scale = min(1, maxDimension / max(size.width, size.height))
-    let target = NSSize(width: (size.width * scale).rounded(), height: (size.height * scale).rounded())
-
+    let target = CGSize(width: (size.width * scale).rounded(), height: (size.height * scale).rounded())
+    #if os(macOS)
     let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(target.width), pixelsHigh: Int(target.height),
                                bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
                                colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)
@@ -416,4 +438,13 @@ private func jpegData(from image: NSImage, maxDimension: CGFloat = 1600, maxByte
         }
     }
     return rep.representation(using: .jpeg, properties: [.compressionFactor: 0.3])
+    #else
+    let scaled = UIGraphicsImageRenderer(size: target).image { _ in
+        image.draw(in: CGRect(origin: .zero, size: target))
+    }
+    for quality in stride(from: 0.8, through: 0.3, by: -0.1) {
+        if let data = scaled.jpegData(compressionQuality: quality), data.count <= maxBytes { return data }
+    }
+    return scaled.jpegData(compressionQuality: 0.3)
+    #endif
 }
