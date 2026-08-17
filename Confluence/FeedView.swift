@@ -23,6 +23,7 @@ struct FeedView: View {
     @Environment(MastodonAccountStore.self) private var mastodon
     @Environment(FollowStore.self) private var follows
     @Environment(NotificationStore.self) private var notifications
+    @Environment(DMStore.self) private var dms
     @Environment(SearchStore.self) private var search
     @Environment(ComposerStore.self) private var composer
     @Environment(PostActionStore.self) private var postActions
@@ -32,6 +33,7 @@ struct FeedView: View {
     @State private var showingMastodonLogin = false
     @State private var showingNotifications = false
     @State private var showingMentions = false
+    @State private var showingDMs = false
     @State private var showingSearch = false
     @State private var showingComposer = false
     #if !os(macOS)
@@ -194,16 +196,21 @@ struct FeedView: View {
             await seedOwnership(wiring)
             await restoreScrollPosition()
             await composerReady
+            dms.setActions(await wiring.dmActions())
             await notifications.refresh()
+            await dms.refresh()
             // Poll while this window is frontmost (task is cancelled when accounts change).
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(60))
                 if Task.isCancelled { break }
-                if scenePhase == .active { await notifications.refresh() }
+                if scenePhase == .active {
+                    await notifications.refresh()
+                    await dms.refresh()
+                }
             }
         }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active { Task { await notifications.refresh() } }
+            if phase == .active { Task { await notifications.refresh(); await dms.refresh() } }
         }
         // Live mode: refresh on an interval and re-pin to the top, only while frontmost. The
         // task restarts when live mode toggles or the window's active state changes (so it
@@ -234,6 +241,7 @@ struct FeedView: View {
         .sheet(isPresented: $showingMastodonLogin) { MastodonLoginView() }
         .sheet(isPresented: $showingNotifications) { NotificationsView() }
         .sheet(isPresented: $showingMentions) { MentionsView() }
+        .sheet(isPresented: $showingDMs) { DirectMessagesView() }
         .sheet(isPresented: $showingSearch) { SearchView() }
         #if !os(macOS)
         .sheet(isPresented: $showingSettings) {
@@ -299,6 +307,13 @@ struct FeedView: View {
             Button { showingMentions = true } label: { Image(systemName: "at") }
                 .help("Mentions")
                 .accessibilityLabel("Mentions")
+        }
+        ToolbarItem {
+            Button { showingDMs = true } label: {
+                Image(systemName: dms.unreadCount > 0 ? "envelope.badge.fill" : "envelope")
+            }
+            .help("Direct Messages")
+            .accessibilityLabel(dms.unreadCount > 0 ? "Direct messages, \(dms.unreadCount) unread" : "Direct messages")
         }
         ToolbarItem {
             Button { liveMode.toggle() } label: {
@@ -376,6 +391,9 @@ struct FeedView: View {
                 }
                 Section {
                     Button { showingMentions = true } label: { Label("Mentions", systemImage: "at") }
+                    Button { showingDMs = true } label: {
+                        Label(dms.unreadCount > 0 ? "Messages (\(dms.unreadCount))" : "Messages", systemImage: "envelope")
+                    }
                     Button { showingSettings = true } label: { Label("Settings", systemImage: "gearshape") }
                 }
             } label: {

@@ -10,6 +10,7 @@ struct ConfluenceApp: App {
     @State private var mastodon: MastodonAccountStore
     @State private var follows = FollowStore()
     @State private var notifications = NotificationStore()
+    @State private var dms = DMStore()
     @State private var search = SearchStore()
     @State private var composer = ComposerStore()
     @State private var postActions = PostActionStore()
@@ -32,6 +33,7 @@ struct ConfluenceApp: App {
                 .environment(mastodon)
                 .environment(follows)
                 .environment(notifications)
+                .environment(dms)
                 .environment(search)
                 .environment(composer)
                 .environment(postActions)
