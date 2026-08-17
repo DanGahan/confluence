@@ -31,6 +31,7 @@ struct FeedView: View {
     @State private var showingBlueskyLogin = false
     @State private var showingMastodonLogin = false
     @State private var showingNotifications = false
+    @State private var showingMentions = false
     @State private var showingSearch = false
     @State private var showingComposer = false
     #if !os(macOS)
@@ -232,6 +233,7 @@ struct FeedView: View {
         .sheet(isPresented: $showingBlueskyLogin) { BlueskyLoginView() }
         .sheet(isPresented: $showingMastodonLogin) { MastodonLoginView() }
         .sheet(isPresented: $showingNotifications) { NotificationsView() }
+        .sheet(isPresented: $showingMentions) { MentionsView() }
         .sheet(isPresented: $showingSearch) { SearchView() }
         #if !os(macOS)
         .sheet(isPresented: $showingSettings) {
@@ -292,6 +294,11 @@ struct FeedView: View {
             }
             .help(notificationsTooltip)
             .accessibilityLabel(notifications.unreadCount > 0 ? "Notifications, \(notifications.unreadCount) unread" : "Notifications")
+        }
+        ToolbarItem {
+            Button { showingMentions = true } label: { Image(systemName: "at") }
+                .help("Mentions")
+                .accessibilityLabel("Mentions")
         }
         ToolbarItem {
             Button { liveMode.toggle() } label: {
@@ -368,6 +375,7 @@ struct FeedView: View {
                     }
                 }
                 Section {
+                    Button { showingMentions = true } label: { Label("Mentions", systemImage: "at") }
                     Button { showingSettings = true } label: { Label("Settings", systemImage: "gearshape") }
                 }
             } label: {
