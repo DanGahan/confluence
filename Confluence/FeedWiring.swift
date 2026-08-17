@@ -131,6 +131,36 @@ struct FeedWiring {
         return fetchers
     }
 
+    /// DM operations per network (F15). Async because Mastodon needs the signed-in account id
+    /// (for is-from-me) which is a network call; Bluesky carries its DID in the session.
+    func dmActions() async -> [Network: DMActions] {
+        var actions: [Network: DMActions] = [:]
+        if bluesky.isLoggedIn, let did = bluesky.session?.did {
+            let store = bluesky
+            // Chat lives on the account's own PDS, not the bsky.social entryway (#202). Resolve it
+            // once here; fall back to the default host if resolution fails (chat then just errors).
+            let base = (try? await BlueskyClient().resolvePdsEndpoint(did: did)) ?? URL(string: "https://bsky.social")!
+            let client = BlueskyClient(pdsURL: base)
+            actions[.bluesky] = DMActions(
+                listConversations: { try await store.withFreshSession { try await client.listConvos(accessToken: $0.accessJwt, selfDID: did) } },
+                messages: { convo in try await store.withFreshSession { try await client.messages(convoId: convo.rawId, accessToken: $0.accessJwt, selfDID: did) } },
+                send: { convo, text in try await store.withFreshSession { try await client.sendMessage(convoId: convo.rawId, text: text, accessToken: $0.accessJwt, selfDID: did) } },
+                markRead: { convo in try await store.withFreshSession { try await client.markConvoRead(convoId: convo.rawId, accessToken: $0.accessJwt) } }
+            )
+        }
+        if let session = mastodon.session,
+           let me = try? await MastodonClient().currentAccount(host: session.host, accessToken: session.accessToken) {
+            let client = MastodonClient(), selfID = me.authorID
+            actions[.mastodon] = DMActions(
+                listConversations: { try await client.conversations(host: session.host, accessToken: session.accessToken) },
+                messages: { convo in try await client.directThread(conversation: convo, host: session.host, accessToken: session.accessToken, selfAccountID: selfID) },
+                send: { convo, text in try await client.sendDirect(conversation: convo, text: text, host: session.host, accessToken: session.accessToken, selfAccountID: selfID) },
+                markRead: { convo in try await client.markConversationRead(id: convo.rawId, host: session.host, accessToken: session.accessToken) }
+            )
+        }
+        return actions
+    }
+
     func searchFetchers() -> [Network: SearchFetcher] {
         var fetchers: [Network: SearchFetcher] = [:]
         if bluesky.isLoggedIn {
