@@ -136,7 +136,11 @@ struct FeedWiring {
     func dmActions() async -> [Network: DMActions] {
         var actions: [Network: DMActions] = [:]
         if bluesky.isLoggedIn, let did = bluesky.session?.did {
-            let store = bluesky, client = BlueskyClient()
+            let store = bluesky
+            // Chat lives on the account's own PDS, not the bsky.social entryway (#202). Resolve it
+            // once here; fall back to the default host if resolution fails (chat then just errors).
+            let base = (try? await BlueskyClient().resolvePdsEndpoint(did: did)) ?? URL(string: "https://bsky.social")!
+            let client = BlueskyClient(pdsURL: base)
             actions[.bluesky] = DMActions(
                 listConversations: { try await store.withFreshSession { try await client.listConvos(accessToken: $0.accessJwt, selfDID: did) } },
                 messages: { convo in try await store.withFreshSession { try await client.messages(convoId: convo.rawId, accessToken: $0.accessJwt, selfDID: did) } },

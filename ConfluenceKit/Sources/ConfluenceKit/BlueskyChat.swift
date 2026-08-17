@@ -1,17 +1,63 @@
 import Foundation
+import os
+
+// Chat failures log the HTTP status/error code or the DecodingError's *key path* only — never
+// field values — so no message content is logged (SPEC F15). The convo/message decode paths are
+// still unexercised against real data (needs an account with DMs), so these stay useful.
+private let chatLog = Logger(subsystem: "com.dangahan.confluence", category: "bluesky.chat")
 
 extension BlueskyClient {
     /// The Bluesky chat service is a separate appview, reached by proxying XRPC calls to the PDS
     /// with this header. Requires an app password with DM access (see SPEC F15 / Accounts).
     private static let chatProxy = "did:web:api.bsky.chat#bsky_chat"
 
+    /// Chat must be called on the account's own PDS, not the `bsky.social` entryway: the entryway
+    /// forwards authed requests to the PDS but drops the chat-proxy directive on that hop, so chat
+    /// methods come back 501 (#202). Resolve the PDS service endpoint from the DID document —
+    /// `did:plc` via plc.directory, `did:web` via its well-known doc.
+    public func resolvePdsEndpoint(did: String) async throws -> URL {
+        let docURL: URL
+        if did.hasPrefix("did:plc:") {
+            guard let u = URL(string: "https://plc.directory/\(did)") else { throw BlueskyError.malformedResponse }
+            docURL = u
+        } else if did.hasPrefix("did:web:") {
+            let host = String(did.dropFirst("did:web:".count))
+            guard let h = host.removingPercentEncoding, let u = URL(string: "https://\(h)/.well-known/did.json") else {
+                throw BlueskyError.malformedResponse
+            }
+            docURL = u
+        } else {
+            throw BlueskyError.malformedResponse
+        }
+        let data: Data
+        let response: URLResponse
+        do { (data, response) = try await session.dataWithRateLimit(for: URLRequest(url: docURL)) }
+        catch { throw BlueskyError.network }
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
+              let doc = try? JSONDecoder().decode(DIDDoc.self, from: data),
+              let endpoint = doc.service?.first(where: { $0.id.hasSuffix("atproto_pds") })?.serviceEndpoint,
+              let url = URL(string: endpoint), url.scheme == "https" else {  // HTTPS only, no ATS exceptions
+            throw BlueskyError.malformedResponse
+        }
+        return url
+    }
+
+    private struct DIDDoc: Decodable {
+        let service: [Service]?
+        struct Service: Decodable { let id: String; let serviceEndpoint: String }
+    }
+
     /// `chat.bsky.convo.listConvos`.
     public func listConvos(accessToken: String, selfDID: String, limit: Int = 50) async throws -> [Conversation] {
         var components = URLComponents(url: pdsURL.appending(path: "xrpc/chat.bsky.convo.listConvos"), resolvingAgainstBaseURL: false)!
         components.queryItems = [URLQueryItem(name: "limit", value: String(limit))]
         let data = try await chatGET(components.url!, accessToken: accessToken)
-        guard let decoded = try? JSONDecoder().decode(ConvoList.self, from: data) else { throw BlueskyError.malformedResponse }
-        return decoded.convos.compactMap { $0.conversation(selfDID: selfDID) }
+        do {
+            return try JSONDecoder().decode(ConvoList.self, from: data).convos.compactMap { $0.conversation(selfDID: selfDID) }
+        } catch {
+            chatLog.error("listConvos: 2xx but decode failed — \(String(describing: error), privacy: .public)")
+            throw BlueskyError.malformedResponse
+        }
     }
 
     /// `chat.bsky.convo.getMessages` — returned oldest-first for display.
@@ -19,8 +65,12 @@ extension BlueskyClient {
         var components = URLComponents(url: pdsURL.appending(path: "xrpc/chat.bsky.convo.getMessages"), resolvingAgainstBaseURL: false)!
         components.queryItems = [URLQueryItem(name: "convoId", value: convoId), URLQueryItem(name: "limit", value: String(limit))]
         let data = try await chatGET(components.url!, accessToken: accessToken)
-        guard let decoded = try? JSONDecoder().decode(MessageList.self, from: data) else { throw BlueskyError.malformedResponse }
-        return decoded.messages.compactMap { $0.message(selfDID: selfDID) }.sorted { $0.sentAt < $1.sentAt }
+        do {
+            return try JSONDecoder().decode(MessageList.self, from: data).messages.compactMap { $0.message(selfDID: selfDID) }.sorted { $0.sentAt < $1.sentAt }
+        } catch {
+            chatLog.error("getMessages: 2xx but decode failed — \(String(describing: error), privacy: .public)")
+            throw BlueskyError.malformedResponse
+        }
     }
 
     /// `chat.bsky.convo.sendMessage` — returns the created message.
@@ -68,6 +118,8 @@ extension BlueskyClient {
         guard let http = response as? HTTPURLResponse else { throw BlueskyError.malformedResponse }
         guard (200..<300).contains(http.statusCode) else {
             let err = (try? JSONDecoder().decode(ChatErr.self, from: data))?.error
+            // Error codes are public (no secrets/content) — logs which failure this is.
+            chatLog.error("chat \(request.url?.lastPathComponent ?? "?", privacy: .public) failed: status \(http.statusCode, privacy: .public) error \(err ?? "nil", privacy: .public)")
             // A normal app password can't reach chat (403). Surface as invalidCredentials so the
             // UI can prompt for a DM-scoped app password rather than showing a raw error.
             if http.statusCode == 401 || http.statusCode == 403 || err == "ExpiredToken" || err == "InvalidToken" {

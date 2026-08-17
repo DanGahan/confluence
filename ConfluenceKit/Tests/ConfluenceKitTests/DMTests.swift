@@ -79,6 +79,20 @@ struct BlueskyChatTests {
         #expect(dm.isFromMe == true)
     }
 
+    @Test func resolvePdsEndpointReadsDidDocServiceEndpoint() async throws {
+        let didDoc = """
+        {"id":"did:plc:abc","service":[
+          {"id":"#atproto_pds","type":"AtprotoPersonalDataServer","serviceEndpoint":"https://puffball.us-east.host.bsky.network"}
+        ]}
+        """.data(using: .utf8)!
+        let client = BlueskyClient(session: MockURLProtocol.session { request in
+            #expect(request.url?.absoluteString == "https://plc.directory/did:plc:abc")
+            return (request.status(200), didDoc)
+        })
+        let url = try await client.resolvePdsEndpoint(did: "did:plc:abc")
+        #expect(url.absoluteString == "https://puffball.us-east.host.bsky.network")
+    }
+
     @Test func chat403SurfacesAsInvalidCredentials() async {
         let client = BlueskyClient(session: MockURLProtocol.session { request in
             (request.status(403), #"{"error":"AccessDenied"}"#.data(using: .utf8)!)
