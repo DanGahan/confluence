@@ -226,14 +226,18 @@ extension MastodonClient {
     }
 }
 
-/// Minimal HTML → text for Mastodon post bodies. Full rendering (links, mentions) is F11.
-// ponytail: regex strip + common entities; swap for AttributedString(html:) if rich text is needed.
+/// HTML → text for Mastodon post bodies. Converts block/line elements to newlines, strips the
+/// remaining tags, then decodes character references (named + decimal + hex). Full rich rendering
+/// (tappable links/mentions) is F11's `RichTextLabel`; this is the plain-text fallback.
 func htmlToPlainText(_ html: String) -> String {
     var text = html
-    text = text.replacingOccurrences(of: "</p>", with: "\n\n")
-    text = text.replacingOccurrences(of: "<br>", with: "\n")
-    text = text.replacingOccurrences(of: "<br/>", with: "\n")
-    text = text.replacingOccurrences(of: "<br />", with: "\n")
+    // Paragraph and line breaks → newlines, tolerating attributes, casing, and self-closing forms
+    // (`<br>`, `<BR/>`, `<br class="x">`). `</div>` also ends a line on some instances.
+    text = text.replacingOccurrences(of: "(?i)</p\\s*>|</div\\s*>", with: "\n\n", options: .regularExpression)
+    text = text.replacingOccurrences(of: "(?i)<br[^>]*>", with: "\n", options: .regularExpression)
     text = text.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
-    return decodeHTMLEntities(text).trimmingCharacters(in: .whitespacesAndNewlines)
+    text = decodeHTMLEntities(text)
+    // Collapse runs of blank lines the tag conversions can produce.
+    text = text.replacingOccurrences(of: "\n{3,}", with: "\n\n", options: .regularExpression)
+    return text.trimmingCharacters(in: .whitespacesAndNewlines)
 }

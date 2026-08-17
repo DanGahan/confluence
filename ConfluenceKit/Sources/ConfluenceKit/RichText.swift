@@ -180,11 +180,51 @@ func mastodonRichText(html: String, mentions: [String: URL]) -> AttributedString
     return attributedString(from: runs)
 }
 
+/// Named HTML entities Mastodon/Fediverse content actually emits. Numeric references
+/// (`&#8217;`, `&#x1F600;`) are handled generically below, so this only needs the named ones.
+private let htmlNamedEntities: [String: Character] = [
+    "amp": "&", "lt": "<", "gt": ">", "quot": "\"", "apos": "'", "nbsp": " ",
+    "mdash": "\u{2014}", "ndash": "\u{2013}", "hellip": "\u{2026}",
+    "lsquo": "\u{2018}", "rsquo": "\u{2019}", "ldquo": "\u{201C}", "rdquo": "\u{201D}",
+    "laquo": "\u{00AB}", "raquo": "\u{00BB}", "copy": "\u{00A9}", "reg": "\u{00AE}", "trade": "\u{2122}",
+    "deg": "\u{00B0}", "middot": "\u{00B7}", "bull": "\u{2022}", "euro": "\u{20AC}", "pound": "\u{00A3}",
+]
+
+/// Decodes HTML character references: named (`&amp;`), decimal (`&#8217;`), and hex
+/// (`&#x1F600;`). Unknown or malformed references are left verbatim, so plain "AT&T" survives.
 func decodeHTMLEntities(_ s: String) -> String {
-    var text = s
-    let entities = ["&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": "\"", "&#39;": "'", "&apos;": "'", "&nbsp;": " "]
-    for (entity, char) in entities { text = text.replacingOccurrences(of: entity, with: char) }
-    return text
+    guard s.contains("&") else { return s }
+    var result = ""
+    result.reserveCapacity(s.count)
+    var i = s.startIndex
+    while i < s.endIndex {
+        // Only try to parse an entity at "&…;" where the ";" is close enough to be one.
+        guard s[i] == "&",
+              let semi = s[i...].firstIndex(of: ";"),
+              s.distance(from: i, to: semi) <= 12,
+              let decoded = decodeEntityBody(s[s.index(after: i)..<semi]) else {
+            result.append(s[i]); i = s.index(after: i); continue
+        }
+        result.append(decoded)
+        i = s.index(after: semi)
+    }
+    return result
+}
+
+/// Decodes the text between `&` and `;`. Returns nil for anything unrecognised.
+private func decodeEntityBody(_ body: Substring) -> Character? {
+    if body.first == "#" {
+        let digits = body.dropFirst()
+        let code: UInt32?
+        if digits.first == "x" || digits.first == "X" {
+            code = UInt32(digits.dropFirst(), radix: 16)
+        } else {
+            code = UInt32(digits)
+        }
+        guard let code, let scalar = Unicode.Scalar(code) else { return nil }
+        return Character(scalar)
+    }
+    return htmlNamedEntities[String(body)]
 }
 
 func stripTags(_ s: String) -> String {
