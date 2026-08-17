@@ -295,6 +295,14 @@ struct FeedView: View {
                     .accessibilityLabel("Scroll to top")
             }
         }
+        // Order: Refresh, Notifications, Live mode, Mentions, Direct Messages.
+        if !liveMode {
+            ToolbarItem {
+                Button { Task { await feed.refresh() } } label: { Image(systemName: "arrow.clockwise") }
+                    .help("Refresh")
+                    .accessibilityLabel("Refresh")
+            }
+        }
         ToolbarItem {
             Button { showingNotifications = true } label: {
                 Image(systemName: notifications.unreadCount > 0 ? "bell.badge.fill" : "bell")
@@ -302,6 +310,16 @@ struct FeedView: View {
             }
             .help(notificationsTooltip)
             .accessibilityLabel(notifications.unreadCount > 0 ? "Notifications, \(notifications.unreadCount) unread" : "Notifications")
+        }
+        ToolbarItem {
+            Button { liveMode.toggle() } label: {
+                Image(systemName: liveMode ? "dot.radiowaves.left.and.right" : "dot.radiowaves.right")
+                    .symbolEffect(.variableColor.iterative, isActive: liveMode)
+                    .foregroundStyle(liveMode ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary))
+            }
+            .help(liveMode ? "Live mode on — auto-refreshing" : "Live mode")
+            .accessibilityLabel("Live mode")
+            .accessibilityValue(liveMode ? "On" : "Off")
         }
         ToolbarItem {
             Button { showingMentions = true } label: { Image(systemName: "at") }
@@ -314,23 +332,6 @@ struct FeedView: View {
             }
             .help("Direct Messages")
             .accessibilityLabel(dms.unreadCount > 0 ? "Direct messages, \(dms.unreadCount) unread" : "Direct messages")
-        }
-        ToolbarItem {
-            Button { liveMode.toggle() } label: {
-                Image(systemName: liveMode ? "dot.radiowaves.left.and.right" : "dot.radiowaves.right")
-                    .symbolEffect(.variableColor.iterative, isActive: liveMode)
-                    .foregroundStyle(liveMode ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary))
-            }
-            .help(liveMode ? "Live mode on — auto-refreshing" : "Live mode")
-            .accessibilityLabel("Live mode")
-            .accessibilityValue(liveMode ? "On" : "Off")
-        }
-        if !liveMode {
-            ToolbarItem {
-                Button { Task { await feed.refresh() } } label: { Image(systemName: "arrow.clockwise") }
-                    .help("Refresh")
-                    .accessibilityLabel("Refresh")
-            }
         }
     }
 
