@@ -1,5 +1,13 @@
 # iOS Plan — Confluence on iOS 26/27 from the shared codebase
 
+> **Status: largely shipped.** The iOS app builds, runs, and is validated on
+> device — foundations (multiplatform target, compile-gate), the whole
+> interaction layer (rich text, hit-testing, quick reply, toolbar, sheets,
+> navigation, scene phase), Settings, an iOS UI-test harness, and a batch of
+> on-device UX refinements have all merged. Remaining: the **iOS 27 SDK pass**
+> and **distribution / TestFlight** (blocked on an Apple Developer account).
+> This document is kept as the original map and rationale.
+
 Goal: ship Confluence for iOS (iPhone + iPad), **one codebase, one repo, no fork**.
 One multiplatform app target with `#if os(...)` seams where the platforms genuinely
 differ; everything else stays shared. This document is the implementation map —
