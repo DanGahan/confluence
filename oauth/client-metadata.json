@@ -12,7 +12,7 @@
     "code"
   ],
   "redirect_uris": [
-    "uk.me.gahan.confluence:/oauth-callback"
+    "uk.me.gahan:/oauth-callback"
   ],
   "scope": "atproto transition:generic",
   "token_endpoint_auth_method": "none"
