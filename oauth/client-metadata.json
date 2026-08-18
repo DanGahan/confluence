@@ -4,9 +4,16 @@
   "client_name": "Confluence",
   "client_uri": "https://github.com/DanGahan/confluence",
   "dpop_bound_access_tokens": true,
-  "grant_types": ["authorization_code", "refresh_token"],
-  "response_types": ["code"],
-  "redirect_uris": ["uk.me.gahan.confluence://oauth-callback"],
+  "grant_types": [
+    "authorization_code",
+    "refresh_token"
+  ],
+  "response_types": [
+    "code"
+  ],
+  "redirect_uris": [
+    "uk.me.gahan.confluence:/oauth-callback"
+  ],
   "scope": "atproto transition:generic",
   "token_endpoint_auth_method": "none"
 }
