@@ -124,6 +124,19 @@ public struct PostThread: Sendable, Equatable {
         self.items = items
         self.focusID = focusID
     }
+
+    /// A copy with `reply` spliced in right after the post it answers (by id), or appended if
+    /// that post isn't in the thread. Backs optimistic quick-reply insertion (G15) — the reply
+    /// shows immediately after it posts, without waiting for a full thread reload.
+    public func inserting(_ reply: FeedItem, after postID: String) -> PostThread {
+        var items = self.items
+        if let idx = items.firstIndex(where: { $0.id == postID }) {
+            items.insert(reply, at: items.index(after: idx))
+        } else {
+            items.append(reply)
+        }
+        return PostThread(items: items, focusID: focusID)
+    }
 }
 
 /// A page of feed items plus the cursor to fetch the next (older) page. No cursor = end.
