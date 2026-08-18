@@ -72,7 +72,8 @@ struct OwnFeedView: View {
         defer { loading = false }
         var groups: [[FeedItem]] = []
         if scope != .mastodon, bluesky.isLoggedIn {
-            let items = try? await bluesky.withAuth { auth, did in try await BlueskyClient().authorFeed(auth: auth, actor: did, cursor: nil).items }
+            let client = bluesky.blueskyClient()
+            let items = try? await bluesky.withAuth { auth, did in try await client.authorFeed(auth: auth, actor: did, cursor: nil).items }
             groups.append(items ?? [])
         }
         if scope != .bluesky, let session = mastodon.session {

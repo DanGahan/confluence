@@ -100,7 +100,7 @@ struct ProfileView: View {
         switch network {
         case .bluesky:
             guard bluesky.isLoggedIn else { return }
-            let client = BlueskyClient()
+            let client = bluesky.blueskyClient()
             profile = try? await bluesky.withAuth { auth, _ in try await client.profile(auth: auth, actor: authorID) }
             posts = (try? await bluesky.withAuth { auth, _ in try await client.authorFeed(auth: auth, actor: authorID, cursor: nil) })?.items ?? []
         case .mastodon:

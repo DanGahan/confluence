@@ -327,7 +327,8 @@ struct ComposerView: View {
 
     private func load() async {
         if bluesky.isLoggedIn, accounts[.bluesky] == nil {
-            accounts[.bluesky] = try? await bluesky.withAuth { auth, did in try await BlueskyClient().profile(auth: auth, actor: did) }
+            let client = bluesky.blueskyClient()
+            accounts[.bluesky] = try? await bluesky.withAuth { auth, did in try await client.profile(auth: auth, actor: did) }
         }
         if let session = mastodon.session, accounts[.mastodon] == nil {
             accounts[.mastodon] = try? await MastodonClient().currentAccount(host: session.host, accessToken: session.accessToken)
@@ -339,7 +340,8 @@ struct ComposerView: View {
         guard following.isEmpty else { return }
         var all: [SearchActor] = []
         if bluesky.isLoggedIn {
-            all += (try? await bluesky.withAuth { auth, did in try await BlueskyClient().followList(auth: auth, actor: did, kind: .following, limit: 100) }) ?? []
+            let client = bluesky.blueskyClient()
+            all += (try? await bluesky.withAuth { auth, did in try await client.followList(auth: auth, actor: did, kind: .following, limit: 100) }) ?? []
         }
         if let session = mastodon.session, let id = accounts[.mastodon]?.authorID {
             all += (try? await MastodonClient().followList(host: session.host, accessToken: session.accessToken, accountID: id, kind: .following, limit: 100)) ?? []

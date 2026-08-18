@@ -101,9 +101,10 @@ private struct ProfileLinkHandler: ViewModifier {
         guard let url = resolvingBlueskyPost, let ref = ProfileLink.blueskyWebPostRef(url) else { return }
         defer { resolvingBlueskyPost = nil }
         do {
+            let client = bluesky.blueskyClient()
             let uri = try await bluesky.withAuth { auth, _ in
                 try await blueskyPostATURI(profileID: ref.handle, rkey: ref.rkey) {
-                    try await BlueskyClient().resolveHandle(auth: auth, handle: $0)
+                    try await client.resolveHandle(auth: auth, handle: $0)
                 }
             }
             // ThreadView loads the conversation from threadID; the rest is placeholder.

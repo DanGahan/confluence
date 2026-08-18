@@ -100,7 +100,8 @@ private struct AccountsSettings: View {
 
     private func load() async {
         if bluesky.isLoggedIn {
-            blueskyProfile = try? await bluesky.withAuth { auth, did in try await BlueskyClient().profile(auth: auth, actor: did) }
+            let client = bluesky.blueskyClient()
+            blueskyProfile = try? await bluesky.withAuth { auth, did in try await client.profile(auth: auth, actor: did) }
         }
         if let session = mastodon.session {
             mastodonProfile = try? await MastodonClient().currentAccount(host: session.host, accessToken: session.accessToken)

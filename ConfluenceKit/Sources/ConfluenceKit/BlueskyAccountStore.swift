@@ -23,6 +23,15 @@ public final class BlueskyAccountStore {
     public var currentDID: String? { session?.did ?? oauthSession?.did }
     public var currentHandle: String? { session?.handle ?? oauthSession?.handle }
 
+    /// Base URL for authenticated Bluesky XRPC. Under OAuth this MUST be the account's own PDS:
+    /// DPoP access tokens are bound to it and the proof's `htu` must match the real host, so the
+    /// bsky.social entryway can't be used (same reason chat needs the PDS, #202). App-password
+    /// sessions keep using the entryway.
+    public var pdsBaseURL: URL { oauthSession?.pdsURL ?? URL(string: "https://bsky.social")! }
+
+    /// A `BlueskyClient` pointed at the right host for the active session. Use for all authed calls.
+    public func blueskyClient() -> BlueskyClient { BlueskyClient(pdsURL: pdsBaseURL) }
+
     public init(
         client: BlueskyClient = BlueskyClient(),
         keychain: any SecureStore = Keychain(service: "com.dangahan.confluence.bluesky"),

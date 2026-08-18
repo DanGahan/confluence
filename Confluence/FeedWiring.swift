@@ -15,7 +15,7 @@ struct FeedWiring {
     func pageFetchers() -> [Network: PageFetcher] {
         var fetchers: [Network: PageFetcher] = [:]
         if bluesky.isLoggedIn {
-            let store = bluesky, client = BlueskyClient()
+            let store = bluesky, client = bluesky.blueskyClient()
             fetchers[.bluesky] = { cursor in
                 try await store.withAuth { auth, _ in try await client.timeline(auth: auth, cursor: cursor) }
             }
@@ -32,7 +32,7 @@ struct FeedWiring {
     func followActions() -> [Network: FollowActions] {
         var actions: [Network: FollowActions] = [:]
         if bluesky.isLoggedIn {
-            let store = bluesky, client = BlueskyClient()
+            let store = bluesky, client = bluesky.blueskyClient()
             actions[.bluesky] = FollowActions(
                 follow: { did in
                     try await store.withAuth { auth, myDID in
@@ -63,7 +63,7 @@ struct FeedWiring {
     func postActions() -> [Network: PostActions] {
         var actions: [Network: PostActions] = [:]
         if bluesky.isLoggedIn {
-            let store = bluesky, client = BlueskyClient()
+            let store = bluesky, client = bluesky.blueskyClient()
             actions[.bluesky] = PostActions(
                 repost: { item in
                     guard let cid = item.cid else { return nil }
@@ -118,7 +118,7 @@ struct FeedWiring {
     func notificationFetchers() -> [Network: NotificationFetcher] {
         var fetchers: [Network: NotificationFetcher] = [:]
         if bluesky.isLoggedIn {
-            let store = bluesky, client = BlueskyClient()
+            let store = bluesky, client = bluesky.blueskyClient()
             fetchers[.bluesky] = {
                 try await store.withAuth { auth, _ in try await client.notifications(auth: auth) }
             }
@@ -140,7 +140,13 @@ struct FeedWiring {
             let store = bluesky
             // Chat lives on the account's own PDS, not the bsky.social entryway (#202). Resolve it
             // once here; fall back to the default host if resolution fails (chat then just errors).
-            let base = (try? await BlueskyClient().resolvePdsEndpoint(did: did)) ?? URL(string: "https://bsky.social")!
+            // OAuth already knows the PDS (token is bound to it); app-password resolves it.
+            let base: URL
+            if let pds = bluesky.oauthSession?.pdsURL {
+                base = pds
+            } else {
+                base = (try? await BlueskyClient().resolvePdsEndpoint(did: did)) ?? URL(string: "https://bsky.social")!
+            }
             let client = BlueskyClient(pdsURL: base)
             actions[.bluesky] = DMActions(
                 listConversations: { try await store.withAuth { auth, _ in try await client.listConvos(auth: auth, selfDID: did) } },
@@ -165,7 +171,7 @@ struct FeedWiring {
     func searchFetchers() -> [Network: SearchFetcher] {
         var fetchers: [Network: SearchFetcher] = [:]
         if bluesky.isLoggedIn {
-            let store = bluesky, client = BlueskyClient()
+            let store = bluesky, client = bluesky.blueskyClient()
             fetchers[.bluesky] = { query, cursor in
                 (try? await store.withAuth { auth, _ in await client.search(auth: auth, query: query, cursor: cursor) })
                     ?? SearchResults(failed: true)
@@ -202,7 +208,7 @@ struct FeedWiring {
         var posters: [Network: Poster] = [:]
         var limits: [Network: Int] = [:]
         if bluesky.isLoggedIn {
-            let store = bluesky, client = BlueskyClient()
+            let store = bluesky, client = bluesky.blueskyClient()
             posters[.bluesky] = { text, images in
                 try await store.withAuth { auth, did in
                     var uploaded: [(blob: Data, alt: String)] = []
