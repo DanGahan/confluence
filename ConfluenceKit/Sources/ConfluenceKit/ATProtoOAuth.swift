@@ -33,11 +33,12 @@ public struct ATProtoOAuthClient: Sendable, Equatable {
         self.scope = scope
     }
 
-    /// ponytail: client_id + redirect_uri must match the hosted client-metadata.json on the
-    /// gh-pages branch. Finalise the redirect scheme against Bluesky's live rules in this slice.
+    /// client_id + redirect_uri must match the hosted client-metadata.json (gh-pages branch,
+    /// served via the gahan.me.uk custom domain — the github.io URL redirects there, which would
+    /// break client_id resolution). Redirect scheme is the reverse-DNS of the domain.
     public static let confluence = ATProtoOAuthClient(
-        clientID: "https://dangahan.github.io/confluence/oauth/client-metadata.json",
-        redirectURI: "io.github.dangahan.confluence://oauth-callback"
+        clientID: "https://gahan.me.uk/confluence/oauth/client-metadata.json",
+        redirectURI: "uk.me.gahan.confluence://oauth-callback"
     )
 
     /// The URL scheme the app must register (Info.plist) and hand to ASWebAuthenticationSession.

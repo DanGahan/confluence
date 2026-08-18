@@ -19,7 +19,7 @@ struct ATProtoOAuthTests {
     }
 
     @Test func callbackSchemeIsDerivedFromRedirect() {
-        #expect(ATProtoOAuthClient.confluence.callbackScheme == "io.github.dangahan.confluence")
+        #expect(ATProtoOAuthClient.confluence.callbackScheme == "uk.me.gahan.confluence")
     }
 
     @Test func parParametersCarryPKCEAndState() {
