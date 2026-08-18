@@ -18,7 +18,11 @@ struct BlueskyLoginView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Sign in to Bluesky").font(.title2).bold()
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Sign in to Bluesky").font(.title2).bold()
+                Text("The secure way — sign in through your browser. Your password never touches the app and two-factor authentication keeps working.")
+                    .font(.subheadline).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
 
             Form {
                 TextField("Handle", text: $handle, prompt: Text("alice.bsky.social"))
@@ -39,35 +43,45 @@ struct BlueskyLoginView: View {
                     .font(.subheadline).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true)
             }
 
+            // Primary action: OAuth, full-width and prominent.
+            Button {
+                Task { await logInOAuth() }
+            } label: {
+                HStack {
+                    if isOAuthing { ProgressView().controlSize(.small).tint(.white) }
+                    Text("Sign in with Bluesky").fontWeight(.semibold)
+                }
+                .frame(maxWidth: .infinity)
+            }
+            .keyboardShortcut(.defaultAction)
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .disabled(handleEmpty || busy)
+
             if useAppPassword {
-                // Fallback: app password (bypasses 2FA — OAuth is preferred).
+                // De-emphasised fallback, with the honest caveat.
+                Divider()
+                Text("App passwords bypass two-factor authentication. Only use this if OAuth doesn’t work for your account.")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 Link("Create an app password", destination: URL(string: "https://bsky.app/settings/app-passwords")!)
                     .font(.caption)
                 HStack {
                     if isLoggingIn { ProgressView().controlSize(.small) }
+                    Button("Hide") { withAnimation { useAppPassword = false; errorMessage = nil } }
+                        .font(.caption).buttonStyle(.plain).foregroundStyle(.secondary)
                     Spacer()
-                    Button("Sign In") { Task { await logIn() } }
-                        .keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent)
+                    Button("Sign in with app password") { Task { await logIn() } }
                         .disabled(!canAppPasswordSubmit)
-                }
-            } else {
-                // Primary: OAuth via the browser.
-                Text("Signs in through your browser — no app password, and keeps 2FA.")
-                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                HStack {
-                    if isOAuthing { ProgressView().controlSize(.small) }
-                    Spacer()
-                    Button("Sign in with OAuth") { Task { await logInOAuth() } }
-                        .keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent)
-                        .disabled(handleEmpty || isOAuthing)
                 }
             }
 
             HStack {
-                Button(useAppPassword ? "Use OAuth instead" : "Use an app password instead") {
-                    withAnimation { useAppPassword.toggle(); errorMessage = nil }
+                if !useAppPassword {
+                    Button("Trouble signing in? Use an app password") {
+                        withAnimation { useAppPassword = true; errorMessage = nil }
+                    }
+                    .font(.caption).buttonStyle(.plain).foregroundStyle(.secondary)
                 }
-                .font(.caption).buttonStyle(.plain).foregroundStyle(.tint)
                 Spacer()
                 Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
             }
