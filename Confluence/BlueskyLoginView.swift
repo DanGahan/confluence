@@ -53,7 +53,6 @@ struct BlueskyLoginView: View {
                 }
                 .frame(maxWidth: .infinity)
             }
-            .keyboardShortcut(.defaultAction)
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
             .disabled(handleEmpty || busy)
