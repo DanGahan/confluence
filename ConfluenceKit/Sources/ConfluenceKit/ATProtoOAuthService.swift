@@ -1,9 +1,31 @@
 import Foundation
+import os
 
-public enum ATProtoOAuthError: Error, Equatable {
+private let oauthLog = Logger(subsystem: "com.dangahan.confluence", category: "oauth")
+
+public enum ATProtoOAuthError: Error, Equatable, LocalizedError {
     case handleResolution
     case malformedResponse
-    case server(Int)
+    /// A non-2xx from the authorization server, carrying its `error` / `error_description` so the
+    /// exact reason (bad redirect, invalid client metadata, DPoP, …) is visible.
+    case server(status: Int, error: String?, description: String?)
+
+    public var errorDescription: String? {
+        switch self {
+        case .handleResolution: return "Couldn't resolve that handle to a Bluesky account."
+        case .malformedResponse: return "The server returned an unexpected response."
+        case .server(let status, let error, let description):
+            return "OAuth error \(status): \(error ?? "unknown")\(description.map { " — \($0)" } ?? "")"
+        }
+    }
+}
+
+/// Decodes the AS's error body (RFC 6749 §5.2) into a typed, loggable error.
+private func oauthError(endpoint: String, status: Int, data: Data) -> ATProtoOAuthError {
+    struct Body: Decodable { let error: String?; let error_description: String? }
+    let body = try? JSONDecoder().decode(Body.self, from: data)
+    oauthLog.error("OAuth \(endpoint, privacy: .public) → \(status, privacy: .public) \(body?.error ?? "?", privacy: .public): \(body?.error_description ?? "", privacy: .public)")
+    return .server(status: status, error: body?.error, description: body?.error_description)
 }
 
 /// Tokens from the ATProto token endpoint. All fields sensitive — Keychain only, never logged.
@@ -51,7 +73,7 @@ public struct ATProtoOAuthService: Sendable {
     /// browser authorization request.
     public func pushAuthorizationRequest(endpoint: URL, params: [String: String], dpop: DPoPProofBuilder) async throws -> String {
         let (data, http) = try await dpopForm(url: endpoint, form: params, dpop: dpop)
-        guard (200..<300).contains(http.statusCode) else { throw ATProtoOAuthError.server(http.statusCode) }
+        guard (200..<300).contains(http.statusCode) else { throw oauthError(endpoint: "PAR", status: http.statusCode, data: data) }
         struct PAR: Decodable { let request_uri: String }
         guard let par = try? JSONDecoder().decode(PAR.self, from: data) else { throw ATProtoOAuthError.malformedResponse }
         return par.request_uri
@@ -79,7 +101,7 @@ public struct ATProtoOAuthService: Sendable {
 
     private func token(tokenEndpoint: URL, dpop: DPoPProofBuilder, form: [String: String]) async throws -> ATProtoTokens {
         let (data, http) = try await dpopForm(url: tokenEndpoint, form: form, dpop: dpop)
-        guard (200..<300).contains(http.statusCode) else { throw ATProtoOAuthError.server(http.statusCode) }
+        guard (200..<300).contains(http.statusCode) else { throw oauthError(endpoint: "token", status: http.statusCode, data: data) }
         struct Response: Decodable {
             let access_token: String; let refresh_token: String; let token_type: String
             let sub: String?; let scope: String?

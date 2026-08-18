@@ -38,7 +38,9 @@ public struct ATProtoOAuthClient: Sendable, Equatable {
     /// break client_id resolution). Redirect scheme is the reverse-DNS of the domain.
     public static let confluence = ATProtoOAuthClient(
         clientID: "https://gahan.me.uk/confluence/oauth/client-metadata.json",
-        redirectURI: "uk.me.gahan.confluence://oauth-callback"
+        // Scheme must be the client_id FQDN reversed *exactly* (gahan.me.uk → uk.me.gahan), single
+        // slash per RFC 8252 §7.1. Bluesky rejects extra segments like uk.me.gahan.confluence.
+        redirectURI: "uk.me.gahan:/oauth-callback"
     )
 
     /// The URL scheme the app must register (Info.plist) and hand to ASWebAuthenticationSession.
