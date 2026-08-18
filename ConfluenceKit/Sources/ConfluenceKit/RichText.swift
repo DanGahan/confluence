@@ -34,6 +34,17 @@ public enum ProfileLink {
         return parts[1]
     }
 
+    /// A `https://bsky.app/profile/{handle}/post/{rkey}` web URL → (handle, rkey), so the post
+    /// can open as an in-app thread instead of the Bluesky app. The handle still needs resolving
+    /// to a DID before building the `at://` URI `getPostThread` wants.
+    public static func blueskyWebPostRef(_ url: URL) -> (handle: String, rkey: String)? {
+        guard let host = url.host, host == "bsky.app" || host == "www.bsky.app" else { return nil }
+        let parts = url.pathComponents.filter { $0 != "/" }
+        guard parts.count == 4, parts[0] == "profile", parts[2] == "post",
+              !parts[1].isEmpty, !parts[3].isEmpty else { return nil }
+        return (parts[1], parts[3])
+    }
+
     /// True if `url` looks like a Mastodon status permalink (`…/@user/{id}` or
     /// `…/statuses/{id}`, id all-digits), so it can be resolved onto the user's instance and
     /// opened as an in-app thread instead of the browser. Matches on path shape only — the
