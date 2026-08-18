@@ -55,7 +55,7 @@ struct RateLimitTests {
                     Data(#"{"cursor":"c1","feed":[]}"#.utf8))
         }
         let page = try await withNoRealSleep { recorder in
-            let p = try await sut.timeline(accessToken: "tok", cursor: nil)
+            let p = try await sut.timeline(auth: .bearer("tok"), cursor: nil)
             #expect(recorder.delays == [2_000_000_000]) // Retry-After was honoured
             return p
         }
@@ -74,7 +74,7 @@ struct RateLimitTests {
                     Data(#"{"cursor":"c1","feed":[]}"#.utf8))
         }
         _ = try await withNoRealSleep { recorder in
-            let p = try await sut.timeline(accessToken: "tok", cursor: nil)
+            let p = try await sut.timeline(auth: .bearer("tok"), cursor: nil)
             // Two retries required. Delays should grow (attempt 0 < attempt 1) even with jitter,
             // since jitter is bounded ±20% and the base doubles.
             #expect(recorder.delays.count == 2)
@@ -91,7 +91,7 @@ struct RateLimitTests {
         }
         let _: Void = await withNoRealSleep { _ in
             await #expect(throws: BlueskyError.rateLimited) {
-                _ = try await sut.timeline(accessToken: "tok", cursor: nil)
+                _ = try await sut.timeline(auth: .bearer("tok"), cursor: nil)
             }
         }
         #expect(attempts.value == 4) // initial + 3 retries

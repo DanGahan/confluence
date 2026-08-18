@@ -38,7 +38,7 @@ struct ThreadTests {
             #expect(request.url?.query?.contains("uri=at://did/post/focus") == true)
             return (request.status(200), json)
         })
-        let thread = try await client.postThread(accessToken: "tok", uri: "at://did/post/focus")
+        let thread = try await client.postThread(auth: .bearer("tok"), uri: "at://did/post/focus")
         #expect(thread.items.map(\.text) == ["root", "focus", "first reply", "second reply"])
         #expect(thread.focusID == "bluesky:at://did/post/focus")
         let focus = try #require(thread.items.first { $0.id == thread.focusID })

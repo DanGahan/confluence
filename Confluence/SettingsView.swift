@@ -55,13 +55,15 @@ private struct AccountsSettings: View {
     @State private var showingBlueskyLogin = false
     @State private var showingMastodonLogin = false
 
-    private var accountsKey: String { "\(bluesky.session?.did ?? "-")|\(mastodon.session?.host ?? "-")" }
+    private var accountsKey: String { "\(bluesky.currentDID ?? "-")|\(mastodon.session?.host ?? "-")" }
 
     var body: some View {
         Form {
             Section("Bluesky") {
-                if let session = bluesky.session {
-                    accountRow(profile: blueskyProfile, name: session.handle, handle: "@\(session.handle)")
+                if bluesky.isLoggedIn {
+                    let handle = bluesky.currentHandle ?? "Bluesky"
+                    accountRow(profile: blueskyProfile, name: handle, handle: "@\(handle)")
+                    if bluesky.isOAuth { Text("Signed in with OAuth").font(.caption).foregroundStyle(.secondary) }
                     Button("Sign Out", role: .destructive) { try? bluesky.logOut(); blueskyProfile = nil }
                 } else {
                     Button("Sign In to Bluesky…") { showingBlueskyLogin = true }
@@ -97,8 +99,9 @@ private struct AccountsSettings: View {
     }
 
     private func load() async {
-        if let session = bluesky.session {
-            blueskyProfile = try? await BlueskyClient().profile(accessToken: session.accessJwt, actor: session.did)
+        if bluesky.isLoggedIn {
+            let client = bluesky.blueskyClient()
+            blueskyProfile = try? await bluesky.withAuth { auth, did in try await client.profile(auth: auth, actor: did) }
         }
         if let session = mastodon.session {
             mastodonProfile = try? await MastodonClient().currentAccount(host: session.host, accessToken: session.accessToken)

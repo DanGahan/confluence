@@ -109,3 +109,53 @@ public struct BlueskyClient: Sendable {
         let message: String?
     }
 }
+
+/// How an authenticated XRPC request is signed. App-password sessions use `Bearer`; ATProto
+/// OAuth sessions (#105) use `DPoP` — a `DPoP <token>` authorization scheme plus a per-request
+/// proof header. Chosen by `BlueskyAccountStore.withAuth` based on which session is active.
+public enum BlueskyAuth: Sendable {
+    case bearer(String)
+    case dpop(accessToken: String, key: DPoPKey)
+}
+
+extension BlueskyClient {
+    /// Signs and performs an authed request, returning the raw `(Data, HTTPURLResponse)` so each
+    /// caller keeps its existing status handling. For DPoP, a per-request proof is attached and the
+    /// request is retried once if the server challenges with a `DPoP-Nonce`. A still-401 after that
+    /// is a genuine expired token — the caller throws `.invalidCredentials` and `withAuth` refreshes.
+    func performAuthed(_ request: URLRequest, auth: BlueskyAuth) async throws -> (Data, HTTPURLResponse) {
+        func run(_ req: URLRequest) async throws -> (Data, HTTPURLResponse) {
+            let data: Data
+            let response: URLResponse
+            do { (data, response) = try await session.dataWithRateLimit(for: req) }
+            catch let error as BlueskyError { throw error }
+            catch { throw BlueskyError.network }
+            guard let http = response as? HTTPURLResponse else { throw BlueskyError.malformedResponse }
+            return (data, http)
+        }
+        switch auth {
+        case .bearer(let token):
+            var req = request
+            req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            return try await run(req)
+        case .dpop(let token, let key):
+            let builder = DPoPProofBuilder(key: key)
+            let method = request.httpMethod ?? "GET"
+            guard let url = request.url else { throw BlueskyError.malformedResponse }
+            func signed(nonce: String?) throws -> URLRequest {
+                var req = request
+                req.setValue("DPoP \(token)", forHTTPHeaderField: "Authorization")
+                req.setValue(try builder.proof(htm: method, htu: url, nonce: nonce, accessToken: token),
+                             forHTTPHeaderField: "DPoP")
+                return req
+            }
+            let (data, http) = try await run(try signed(nonce: nil))
+            // A `DPoP-Nonce` challenge means "retry with this nonce"; a still-401 after is a real
+            // expired token, surfaced to withAuth for refresh.
+            if http.statusCode == 401, let nonce = http.value(forHTTPHeaderField: "DPoP-Nonce") {
+                return try await run(try signed(nonce: nonce))
+            }
+            return (data, http)
+        }
+    }
+}

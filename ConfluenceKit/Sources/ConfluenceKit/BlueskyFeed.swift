@@ -2,14 +2,13 @@ import Foundation
 
 extension BlueskyClient {
     /// `app.bsky.feed.getTimeline` — the home timeline as normalized feed items.
-    public func timeline(accessToken: String, cursor: String?, limit: Int = 50) async throws -> FeedPage {
+    public func timeline(auth: BlueskyAuth, cursor: String?, limit: Int = 50) async throws -> FeedPage {
         var components = URLComponents(url: pdsURL.appending(path: "xrpc/app.bsky.feed.getTimeline"), resolvingAgainstBaseURL: false)!
         components.queryItems = [URLQueryItem(name: "limit", value: String(limit))]
             + (cursor.map { [URLQueryItem(name: "cursor", value: $0)] } ?? [])
-        var request = URLRequest(url: components.url!)
-        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        let request = URLRequest(url: components.url!)
 
-        let (data, response) = try await timelineData(for: request)
+        let (data, response) = try await performAuthed(request, auth: auth)
         guard (200..<300).contains(response.statusCode) else {
             // AT Proto signals an expired/invalid access token with 400 ExpiredToken (not 401).
             // Map those to .invalidCredentials so the caller refreshes and retries.
@@ -28,17 +27,16 @@ extension BlueskyClient {
 
     /// `app.bsky.feed.getPostThread` — a post with its parent chain and nested replies.
     /// Flattened to every post in the conversation, chronological (oldest first).
-    public func postThread(accessToken: String, uri: String, depth: Int = 30) async throws -> PostThread {
+    public func postThread(auth: BlueskyAuth, uri: String, depth: Int = 30) async throws -> PostThread {
         var components = URLComponents(url: pdsURL.appending(path: "xrpc/app.bsky.feed.getPostThread"), resolvingAgainstBaseURL: false)!
         components.queryItems = [
             URLQueryItem(name: "uri", value: uri),
             URLQueryItem(name: "depth", value: String(depth)),
             URLQueryItem(name: "parentHeight", value: "40"),
         ]
-        var request = URLRequest(url: components.url!)
-        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        let request = URLRequest(url: components.url!)
 
-        let (data, response) = try await timelineData(for: request)
+        let (data, response) = try await performAuthed(request, auth: auth)
         guard (200..<300).contains(response.statusCode) else {
             if response.statusCode == 429 { throw BlueskyError.rateLimited }
             throw BlueskyError.server("Bluesky thread status \(response.statusCode).")
@@ -62,33 +60,19 @@ extension BlueskyClient {
     }
 
     /// `app.bsky.feed.getAuthorFeed` — a single user's posts. Same wire shape as the timeline.
-    public func authorFeed(accessToken: String, actor: String, cursor: String?, limit: Int = 40) async throws -> FeedPage {
+    public func authorFeed(auth: BlueskyAuth, actor: String, cursor: String?, limit: Int = 40) async throws -> FeedPage {
         var components = URLComponents(url: pdsURL.appending(path: "xrpc/app.bsky.feed.getAuthorFeed"), resolvingAgainstBaseURL: false)!
         components.queryItems = [URLQueryItem(name: "actor", value: actor), URLQueryItem(name: "limit", value: String(limit))]
             + (cursor.map { [URLQueryItem(name: "cursor", value: $0)] } ?? [])
-        var request = URLRequest(url: components.url!)
-        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        let request = URLRequest(url: components.url!)
 
-        let (data, response) = try await timelineData(for: request)
+        let (data, response) = try await performAuthed(request, auth: auth)
         guard (200..<300).contains(response.statusCode) else {
             if response.statusCode == 429 { throw BlueskyError.rateLimited }
             throw BlueskyError.server("Bluesky author feed status \(response.statusCode).")
         }
         guard let decoded = try? JSONDecoder().decode(Timeline.self, from: data) else { throw BlueskyError.malformedResponse }
         return FeedPage(items: decoded.feed.compactMap(\.feedItem), nextCursor: decoded.cursor)
-    }
-
-    // Reuses the private URLSession via a tiny internal shim so decoding stays here.
-    private func timelineData(for request: URLRequest) async throws -> (Data, HTTPURLResponse) {
-        do {
-            let (data, response) = try await session.dataWithRateLimit(for: request)
-            guard let http = response as? HTTPURLResponse else { throw BlueskyError.malformedResponse }
-            return (data, http)
-        } catch let error as BlueskyError {
-            throw error
-        } catch {
-            throw BlueskyError.network
-        }
     }
 
     // MARK: - Wire format (only the fields we render)

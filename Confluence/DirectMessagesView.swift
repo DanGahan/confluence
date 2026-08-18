@@ -5,13 +5,16 @@ import ConfluenceKit
 /// its thread. Mastodon conversations are flagged not-private.
 struct DirectMessagesView: View {
     @Environment(DMStore.self) private var dms
+    @Environment(BlueskyAccountStore.self) private var bluesky
     @Environment(\.dismiss) private var dismiss
     @State private var selected: Conversation?
 
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                if dms.failedNetworks.contains(.bluesky) { blueskyChatHint }
+                // The app-password DM-scope hint only applies to app-password sessions; under OAuth
+                // a chat failure is a scope/other issue, not a missing DM app password.
+                if dms.failedNetworks.contains(.bluesky) && !bluesky.isOAuth { blueskyChatHint }
                 if dms.conversations.isEmpty {
                     ContentUnavailableView("No Messages", systemImage: "envelope",
                         description: Text(dms.isLoading

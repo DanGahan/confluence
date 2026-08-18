@@ -15,9 +15,9 @@ struct FeedWiring {
     func pageFetchers() -> [Network: PageFetcher] {
         var fetchers: [Network: PageFetcher] = [:]
         if bluesky.isLoggedIn {
-            let store = bluesky, client = BlueskyClient()
+            let store = bluesky, client = bluesky.blueskyClient()
             fetchers[.bluesky] = { cursor in
-                try await store.withFreshSession { try await client.timeline(accessToken: $0.accessJwt, cursor: cursor) }
+                try await store.withAuth { auth, _ in try await client.timeline(auth: auth, cursor: cursor) }
             }
         }
         if let session = mastodon.session {
@@ -32,15 +32,16 @@ struct FeedWiring {
     func followActions() -> [Network: FollowActions] {
         var actions: [Network: FollowActions] = [:]
         if bluesky.isLoggedIn {
-            let store = bluesky, client = BlueskyClient()
+            let store = bluesky, client = bluesky.blueskyClient()
             actions[.bluesky] = FollowActions(
                 follow: { did in
-                    guard let session = await store.session else { throw BlueskyError.invalidCredentials }
-                    return try await client.follow(accessToken: session.accessJwt, repoDID: session.did, subjectDID: did)
+                    try await store.withAuth { auth, myDID in
+                        try await client.follow(auth: auth, repoDID: myDID, subjectDID: did)
+                    }
                 },
                 unfollow: { _, followURI in
-                    guard let session = await store.session, let followURI else { return }
-                    try await client.unfollow(accessToken: session.accessJwt, followURI: followURI)
+                    guard let followURI else { return }
+                    try await store.withAuth { auth, _ in try await client.unfollow(auth: auth, followURI: followURI) }
                 }
             )
         }
@@ -62,29 +63,29 @@ struct FeedWiring {
     func postActions() -> [Network: PostActions] {
         var actions: [Network: PostActions] = [:]
         if bluesky.isLoggedIn {
-            let store = bluesky, client = BlueskyClient()
+            let store = bluesky, client = bluesky.blueskyClient()
             actions[.bluesky] = PostActions(
                 repost: { item in
                     guard let cid = item.cid else { return nil }
-                    return try await store.withFreshSession { try await client.repost(accessToken: $0.accessJwt, repoDID: $0.did, uri: item.rawId, cid: cid) }
+                    return try await store.withAuth { auth, did in try await client.repost(auth: auth, repoDID: did, uri: item.rawId, cid: cid) }
                 },
                 unrepost: { _, recordURI in
                     guard let recordURI else { return }
-                    try await store.withFreshSession { try await client.deleteRecord(accessToken: $0.accessJwt, uri: recordURI) }
+                    try await store.withAuth { auth, _ in try await client.deleteRecord(auth: auth, uri: recordURI) }
                 },
                 like: { item in
                     guard let cid = item.cid else { return nil }
-                    return try await store.withFreshSession { try await client.like(accessToken: $0.accessJwt, repoDID: $0.did, uri: item.rawId, cid: cid) }
+                    return try await store.withAuth { auth, did in try await client.like(auth: auth, repoDID: did, uri: item.rawId, cid: cid) }
                 },
                 unlike: { _, recordURI in
                     guard let recordURI else { return }
-                    try await store.withFreshSession { try await client.deleteRecord(accessToken: $0.accessJwt, uri: recordURI) }
+                    try await store.withAuth { auth, _ in try await client.deleteRecord(auth: auth, uri: recordURI) }
                 },
                 block: { item in
-                    _ = try await store.withFreshSession { try await client.block(accessToken: $0.accessJwt, repoDID: $0.did, subjectDID: item.authorID) }
+                    _ = try await store.withAuth { auth, did in try await client.block(auth: auth, repoDID: did, subjectDID: item.authorID) }
                 },
                 delete: { item in
-                    try await store.withFreshSession { try await client.deletePost(accessToken: $0.accessJwt, uri: item.rawId) }
+                    try await store.withAuth { auth, _ in try await client.deletePost(auth: auth, uri: item.rawId) }
                 },
                 reply: { item, text in
                     guard let cid = item.cid else { throw PostActionError.notLoggedIn }
@@ -92,8 +93,8 @@ struct FeedWiring {
                     // Root the reply at the conversation: the post's own thread root if it's a
                     // reply, else the post itself (a top-level post is its own root).
                     let root = item.replyRoot ?? parent
-                    _ = try await store.withFreshSession {
-                        try await client.post(accessToken: $0.accessJwt, repoDID: $0.did, text: text,
+                    _ = try await store.withAuth { auth, did in
+                        try await client.post(auth: auth, repoDID: did, text: text,
                                               reply: (parent: parent, root: root))
                     }
                 }
@@ -117,9 +118,9 @@ struct FeedWiring {
     func notificationFetchers() -> [Network: NotificationFetcher] {
         var fetchers: [Network: NotificationFetcher] = [:]
         if bluesky.isLoggedIn {
-            let store = bluesky, client = BlueskyClient()
+            let store = bluesky, client = bluesky.blueskyClient()
             fetchers[.bluesky] = {
-                try await store.withFreshSession { try await client.notifications(accessToken: $0.accessJwt) }
+                try await store.withAuth { auth, _ in try await client.notifications(auth: auth) }
             }
         }
         if let session = mastodon.session {
@@ -135,17 +136,23 @@ struct FeedWiring {
     /// (for is-from-me) which is a network call; Bluesky carries its DID in the session.
     func dmActions() async -> [Network: DMActions] {
         var actions: [Network: DMActions] = [:]
-        if bluesky.isLoggedIn, let did = bluesky.session?.did {
+        if bluesky.isLoggedIn, let did = bluesky.currentDID {
             let store = bluesky
             // Chat lives on the account's own PDS, not the bsky.social entryway (#202). Resolve it
             // once here; fall back to the default host if resolution fails (chat then just errors).
-            let base = (try? await BlueskyClient().resolvePdsEndpoint(did: did)) ?? URL(string: "https://bsky.social")!
+            // OAuth already knows the PDS (token is bound to it); app-password resolves it.
+            let base: URL
+            if let pds = bluesky.oauthSession?.pdsURL {
+                base = pds
+            } else {
+                base = (try? await BlueskyClient().resolvePdsEndpoint(did: did)) ?? URL(string: "https://bsky.social")!
+            }
             let client = BlueskyClient(pdsURL: base)
             actions[.bluesky] = DMActions(
-                listConversations: { try await store.withFreshSession { try await client.listConvos(accessToken: $0.accessJwt, selfDID: did) } },
-                messages: { convo in try await store.withFreshSession { try await client.messages(convoId: convo.rawId, accessToken: $0.accessJwt, selfDID: did) } },
-                send: { convo, text in try await store.withFreshSession { try await client.sendMessage(convoId: convo.rawId, text: text, accessToken: $0.accessJwt, selfDID: did) } },
-                markRead: { convo in try await store.withFreshSession { try await client.markConvoRead(convoId: convo.rawId, accessToken: $0.accessJwt) } }
+                listConversations: { try await store.withAuth { auth, _ in try await client.listConvos(auth: auth, selfDID: did) } },
+                messages: { convo in try await store.withAuth { auth, _ in try await client.messages(convoId: convo.rawId, auth: auth, selfDID: did) } },
+                send: { convo, text in try await store.withAuth { auth, _ in try await client.sendMessage(convoId: convo.rawId, text: text, auth: auth, selfDID: did) } },
+                markRead: { convo in try await store.withAuth { auth, _ in try await client.markConvoRead(convoId: convo.rawId, auth: auth) } }
             )
         }
         if let session = mastodon.session,
@@ -164,10 +171,10 @@ struct FeedWiring {
     func searchFetchers() -> [Network: SearchFetcher] {
         var fetchers: [Network: SearchFetcher] = [:]
         if bluesky.isLoggedIn {
-            let store = bluesky, client = BlueskyClient()
+            let store = bluesky, client = bluesky.blueskyClient()
             fetchers[.bluesky] = { query, cursor in
-                guard let token = await store.session?.accessJwt else { return SearchResults(failed: true) }
-                return await client.search(accessToken: token, query: query, cursor: cursor)
+                (try? await store.withAuth { auth, _ in await client.search(auth: auth, query: query, cursor: cursor) })
+                    ?? SearchResults(failed: true)
             }
         }
         if let session = mastodon.session {
@@ -182,7 +189,7 @@ struct FeedWiring {
     /// Signed-in user keys per network, so own-post actions (Delete) can appear.
     func ownAuthorKeys() async -> Set<String> {
         var keys: Set<String> = []
-        if let did = bluesky.session?.did { keys.insert("\(Network.bluesky.rawValue):\(did)") }
+        if let did = bluesky.currentDID { keys.insert("\(Network.bluesky.rawValue):\(did)") }
         if let session = mastodon.session,
            let me = try? await MastodonClient().currentAccount(host: session.host, accessToken: session.accessToken) {
             keys.insert("\(Network.mastodon.rawValue):\(me.authorID)")
@@ -201,15 +208,15 @@ struct FeedWiring {
         var posters: [Network: Poster] = [:]
         var limits: [Network: Int] = [:]
         if bluesky.isLoggedIn {
-            let store = bluesky, client = BlueskyClient()
+            let store = bluesky, client = bluesky.blueskyClient()
             posters[.bluesky] = { text, images in
-                try await store.withFreshSession { s in
+                try await store.withAuth { auth, did in
                     var uploaded: [(blob: Data, alt: String)] = []
                     for attachment in images {
-                        let blob = try await client.uploadImage(accessToken: s.accessJwt, data: attachment.data, mimeType: "image/jpeg")
+                        let blob = try await client.uploadImage(auth: auth, data: attachment.data, mimeType: "image/jpeg")
                         uploaded.append((blob: blob, alt: attachment.alt))
                     }
-                    _ = try await client.post(accessToken: s.accessJwt, repoDID: s.did, text: text, images: uploaded)
+                    _ = try await client.post(auth: auth, repoDID: did, text: text, images: uploaded)
                 }
             }
             limits[.bluesky] = 300

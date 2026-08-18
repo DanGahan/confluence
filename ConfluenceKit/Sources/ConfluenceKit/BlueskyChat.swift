@@ -48,10 +48,10 @@ extension BlueskyClient {
     }
 
     /// `chat.bsky.convo.listConvos`.
-    public func listConvos(accessToken: String, selfDID: String, limit: Int = 50) async throws -> [Conversation] {
+    public func listConvos(auth: BlueskyAuth, selfDID: String, limit: Int = 50) async throws -> [Conversation] {
         var components = URLComponents(url: pdsURL.appending(path: "xrpc/chat.bsky.convo.listConvos"), resolvingAgainstBaseURL: false)!
         components.queryItems = [URLQueryItem(name: "limit", value: String(limit))]
-        let data = try await chatGET(components.url!, accessToken: accessToken)
+        let data = try await chatGET(components.url!, auth: auth)
         do {
             return try JSONDecoder().decode(ConvoList.self, from: data).convos.compactMap { $0.conversation(selfDID: selfDID) }
         } catch {
@@ -61,10 +61,10 @@ extension BlueskyClient {
     }
 
     /// `chat.bsky.convo.getMessages` — returned oldest-first for display.
-    public func messages(convoId: String, accessToken: String, selfDID: String, limit: Int = 50) async throws -> [DirectMessage] {
+    public func messages(convoId: String, auth: BlueskyAuth, selfDID: String, limit: Int = 50) async throws -> [DirectMessage] {
         var components = URLComponents(url: pdsURL.appending(path: "xrpc/chat.bsky.convo.getMessages"), resolvingAgainstBaseURL: false)!
         components.queryItems = [URLQueryItem(name: "convoId", value: convoId), URLQueryItem(name: "limit", value: String(limit))]
-        let data = try await chatGET(components.url!, accessToken: accessToken)
+        let data = try await chatGET(components.url!, auth: auth)
         do {
             return try JSONDecoder().decode(MessageList.self, from: data).messages.compactMap { $0.message(selfDID: selfDID) }.sorted { $0.sentAt < $1.sentAt }
         } catch {
@@ -74,10 +74,10 @@ extension BlueskyClient {
     }
 
     /// `chat.bsky.convo.sendMessage` — returns the created message.
-    public func sendMessage(convoId: String, text: String, accessToken: String, selfDID: String) async throws -> DirectMessage {
+    public func sendMessage(convoId: String, text: String, auth: BlueskyAuth, selfDID: String) async throws -> DirectMessage {
         let url = pdsURL.appending(path: "xrpc/chat.bsky.convo.sendMessage")
         let body = try JSONSerialization.data(withJSONObject: ["convoId": convoId, "message": ["text": text]])
-        let data = try await chatPOST(url, body: body, accessToken: accessToken)
+        let data = try await chatPOST(url, body: body, auth: auth)
         guard let msg = try? JSONDecoder().decode(Message.self, from: data), let dm = msg.message(selfDID: selfDID) else {
             throw BlueskyError.malformedResponse
         }
@@ -85,37 +85,31 @@ extension BlueskyClient {
     }
 
     /// `chat.bsky.convo.updateRead`.
-    public func markConvoRead(convoId: String, accessToken: String) async throws {
+    public func markConvoRead(convoId: String, auth: BlueskyAuth) async throws {
         let url = pdsURL.appending(path: "xrpc/chat.bsky.convo.updateRead")
         let body = try JSONSerialization.data(withJSONObject: ["convoId": convoId])
-        _ = try await chatPOST(url, body: body, accessToken: accessToken)
+        _ = try await chatPOST(url, body: body, auth: auth)
     }
 
     // MARK: - Chat transport (adds the atproto-proxy header + shared error handling)
 
-    private func chatGET(_ url: URL, accessToken: String) async throws -> Data {
+    private func chatGET(_ url: URL, auth: BlueskyAuth) async throws -> Data {
         var request = URLRequest(url: url)
-        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         request.setValue(Self.chatProxy, forHTTPHeaderField: "atproto-proxy")
-        return try await chatSend(request)
+        return try await chatPerform(request, auth: auth)
     }
 
-    private func chatPOST(_ url: URL, body: Data, accessToken: String) async throws -> Data {
+    private func chatPOST(_ url: URL, body: Data, auth: BlueskyAuth) async throws -> Data {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         request.setValue(Self.chatProxy, forHTTPHeaderField: "atproto-proxy")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = body
-        return try await chatSend(request)
+        return try await chatPerform(request, auth: auth)
     }
 
-    private func chatSend(_ request: URLRequest) async throws -> Data {
-        let data: Data
-        let response: URLResponse
-        do { (data, response) = try await session.dataWithRateLimit(for: request) }
-        catch { throw BlueskyError.network }
-        guard let http = response as? HTTPURLResponse else { throw BlueskyError.malformedResponse }
+    private func chatPerform(_ request: URLRequest, auth: BlueskyAuth) async throws -> Data {
+        let (data, http) = try await performAuthed(request, auth: auth)
         guard (200..<300).contains(http.statusCode) else {
             let err = (try? JSONDecoder().decode(ChatErr.self, from: data))?.error
             // Error codes are public (no secrets/content) — logs which failure this is.

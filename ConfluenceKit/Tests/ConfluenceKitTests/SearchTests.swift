@@ -18,7 +18,7 @@ struct SearchDecodingTests {
                 return (request.status(404), Data())
             }
         })
-        let results = await client.search(accessToken: "tok", query: "swift")
+        let results = await client.search(auth: .bearer("tok"), query: "swift")
         #expect(results.failed == false)
         #expect(results.people.map(\.name) == ["Alice"])
         #expect(results.people[0].isFollowing == true)
@@ -32,7 +32,7 @@ struct SearchDecodingTests {
 
     @Test func blueskySearchFailsOnlyWhenBothFail() async {
         let client = BlueskyClient(session: MockURLProtocol.session { ($0.status(500), Data()) })
-        let results = await client.search(accessToken: "tok", query: "x")
+        let results = await client.search(auth: .bearer("tok"), query: "x")
         #expect(results.failed == true)
     }
 
