@@ -57,11 +57,11 @@ struct BlueskyLoginView: View {
 
             Divider()
 
-            // #105 slice 2: OAuth sign-in (in validation — confirms the ATProto handshake end to
-            // end). Full feed support via DPoP is slice 3; for now it just proves the connection.
+            // #105: OAuth sign-in — the sanctioned ATProto flow. Signs in via the browser and
+            // drives the app over DPoP, no app password needed.
             VStack(alignment: .leading, spacing: 6) {
-                Text("New: Sign in with OAuth").font(.subheadline).bold()
-                Text("Uses your handle + the browser — no app password, and keeps 2FA. In testing.")
+                Text("Sign in with OAuth (recommended)").font(.subheadline).bold()
+                Text("Uses your handle + the browser — no app password, and keeps 2FA.")
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 HStack {
                     if isOAuthing { ProgressView().controlSize(.small) }
@@ -97,8 +97,7 @@ struct BlueskyLoginView: View {
         oauthMessage = nil
         do {
             try await account.logInWithOAuth(handle: handle)
-            let did = account.oauthSession?.did ?? "?"
-            oauthMessage = "✓ Connected via OAuth (\(did)). Feed support lands next."
+            dismiss() // signed in — the feed loads over DPoP
         } catch {
             oauthMessage = (error as? LocalizedError)?.errorDescription ?? "OAuth sign-in failed: \(error)"
         }

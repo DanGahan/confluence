@@ -53,7 +53,7 @@ struct FeedView: View {
     private let position = FeedPositionStore()
 
     private var accountsKey: String {
-        "\(bluesky.session?.did ?? "-")|\(mastodon.session?.host ?? "-")"
+        "\(bluesky.currentDID ?? "-")|\(mastodon.session?.host ?? "-")"
     }
 
     private var bothConnected: Bool { bluesky.isLoggedIn && mastodon.isLoggedIn }

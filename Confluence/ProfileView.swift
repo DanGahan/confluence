@@ -99,10 +99,10 @@ struct ProfileView: View {
         defer { loading = false }
         switch network {
         case .bluesky:
-            guard let session = bluesky.session else { return }
+            guard bluesky.isLoggedIn else { return }
             let client = BlueskyClient()
-            profile = try? await client.profile(accessToken: session.accessJwt, actor: authorID)
-            posts = (try? await client.authorFeed(accessToken: session.accessJwt, actor: authorID, cursor: nil))?.items ?? []
+            profile = try? await bluesky.withAuth { auth, _ in try await client.profile(auth: auth, actor: authorID) }
+            posts = (try? await bluesky.withAuth { auth, _ in try await client.authorFeed(auth: auth, actor: authorID, cursor: nil) })?.items ?? []
         case .mastodon:
             guard let session = mastodon.session else { return }
             let client = MastodonClient()

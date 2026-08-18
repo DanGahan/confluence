@@ -9,7 +9,7 @@ struct ProfileDecodingTests {
             let json = #"{"did":"did:1","handle":"a.bsky.social","displayName":"Alice","description":"hi","avatar":"https://a","followersCount":10,"followsCount":5,"postsCount":42,"viewer":{"following":"at://f"}}"#
             return (request.status(200), json.data(using: .utf8)!)
         })
-        let p = try await client.profile(accessToken: "t", actor: "a.bsky.social")
+        let p = try await client.profile(auth: .bearer("t"), actor: "a.bsky.social")
         #expect(p.name == "Alice")
         #expect(p.followersCount == 10)
         #expect(p.followingCount == 5)
@@ -23,7 +23,7 @@ struct ProfileDecodingTests {
             let json = #"{"follows":[{"did":"did:2","handle":"b.bsky.social","displayName":"Bob","viewer":{"following":"at://x"}}]}"#
             return (request.status(200), json.data(using: .utf8)!)
         })
-        let list = try await client.followList(accessToken: "t", actor: "a", kind: .following)
+        let list = try await client.followList(auth: .bearer("t"), actor: "a", kind: .following)
         #expect(list.map(\.name) == ["Bob"])
         #expect(list[0].isFollowing == true)
     }
@@ -33,7 +33,7 @@ struct ProfileDecodingTests {
             #expect(request.url?.path == "/xrpc/app.bsky.graph.getFollowers")
             return (request.status(200), #"{"followers":[{"did":"did:3","handle":"c.bsky.social"}]}"#.data(using: .utf8)!)
         })
-        let list = try await client.followList(accessToken: "t", actor: "a", kind: .followers)
+        let list = try await client.followList(auth: .bearer("t"), actor: "a", kind: .followers)
         #expect(list.map(\.handle) == ["c.bsky.social"])
     }
 
@@ -43,7 +43,7 @@ struct ProfileDecodingTests {
             let json = #"{"cursor":"n","feed":[{"post":{"uri":"at://p","author":{"did":"did:1","handle":"a.bsky.social"},"record":{"text":"my post","createdAt":"2026-07-01T10:00:00.000Z"}}}]}"#
             return (request.status(200), json.data(using: .utf8)!)
         })
-        let page = try await client.authorFeed(accessToken: "t", actor: "a", cursor: nil)
+        let page = try await client.authorFeed(auth: .bearer("t"), actor: "a", cursor: nil)
         #expect(page.items.map(\.text) == ["my post"])
         #expect(page.nextCursor == "n")
     }

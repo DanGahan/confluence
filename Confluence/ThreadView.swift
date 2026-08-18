@@ -87,12 +87,12 @@ struct ThreadView: View {
         var resolved = SelfAuthor(id: "", name: "You", handle: "", avatar: nil)
         switch item.network {
         case .bluesky:
-            if let profile = try? await bluesky.withFreshSession({
-                try await BlueskyClient().profile(accessToken: $0.accessJwt, actor: $0.did)
+            if let profile = try? await bluesky.withAuth({ auth, did in
+                try await BlueskyClient().profile(auth: auth, actor: did)
             }) {
                 resolved = SelfAuthor(id: profile.authorID, name: profile.name, handle: profile.handle, avatar: profile.avatarURL)
-            } else if let s = bluesky.session {
-                resolved = SelfAuthor(id: s.did, name: s.handle, handle: s.handle, avatar: nil)
+            } else if let did = bluesky.currentDID, let handle = bluesky.currentHandle {
+                resolved = SelfAuthor(id: did, name: handle, handle: handle, avatar: nil)
             }
         case .mastodon:
             if let s = mastodon.session,
@@ -114,8 +114,8 @@ struct ThreadView: View {
         do {
             switch item.network {
             case .bluesky:
-                guard let session = bluesky.session else { log.error("thread open: no Bluesky session"); return }
-                thread = try await BlueskyClient().postThread(accessToken: session.accessJwt, uri: item.threadID)
+                guard bluesky.isLoggedIn else { log.error("thread open: no Bluesky session"); return }
+                thread = try await bluesky.withAuth { auth, _ in try await BlueskyClient().postThread(auth: auth, uri: item.threadID) }
             case .mastodon:
                 guard let session = mastodon.session else { log.error("thread open: no Mastodon session"); return }
                 thread = try await MastodonClient().statusContext(host: session.host, accessToken: session.accessToken, statusID: item.threadID)

@@ -17,7 +17,11 @@ public final class BlueskyAccountStore {
     private static let account = "session"
     private static let oauthAccount = "oauth-session"
 
-    public var isLoggedIn: Bool { session != nil }
+    public var isLoggedIn: Bool { session != nil || oauthSession != nil }
+
+    /// The active account's DID/handle regardless of auth type — for display and `repoDID`.
+    public var currentDID: String? { session?.did ?? oauthSession?.did }
+    public var currentHandle: String? { session?.handle ?? oauthSession?.handle }
 
     public init(
         client: BlueskyClient = BlueskyClient(),
@@ -77,6 +81,7 @@ public final class BlueskyAccountStore {
     public func logOut() throws {
         try keychain.deleteAll()
         session = nil
+        oauthSession = nil
     }
 
     /// Runs `body` with the current session; if the access token has expired
@@ -96,4 +101,49 @@ public final class BlueskyAccountStore {
             return try await body(fresh)
         }
     }
+
+    /// Like `withFreshSession`, but hands `body` a `BlueskyAuth` (Bearer for app-password, DPoP
+    /// for OAuth) so authed calls work under either sign-in (#105 slice 3). Refreshes once on
+    /// `invalidCredentials` via the matching path. Prefer this for all authenticated calls.
+    /// `body` receives the auth plus the account's own DID (needed as `repoDID` for writes).
+    public nonisolated func withAuth<T: Sendable>(
+        _ body: @Sendable (BlueskyAuth, _ did: String) async throws -> T
+    ) async throws -> T {
+        if let oauth = await oauthSession {
+            do {
+                return try await body(.dpop(accessToken: oauth.accessToken, key: try oauth.dpopKey()), oauth.did)
+            } catch BlueskyError.invalidCredentials {
+                try await refreshOAuth()
+                guard let fresh = await oauthSession else { throw BlueskyError.invalidCredentials }
+                return try await body(.dpop(accessToken: fresh.accessToken, key: try fresh.dpopKey()), fresh.did)
+            }
+        }
+        guard let session = await session else { throw BlueskyError.invalidCredentials }
+        do {
+            return try await body(.bearer(session.accessJwt), session.did)
+        } catch BlueskyError.invalidCredentials {
+            try await refresh()
+            guard let fresh = await self.session else { throw BlueskyError.invalidCredentials }
+            return try await body(.bearer(fresh.accessJwt), fresh.did)
+        }
+    }
+
+    /// Refreshes an OAuth access token via the DPoP-signed refresh grant, rotating stored tokens.
+    public func refreshOAuth() async throws {
+        guard let oauth = oauthSession else { throw BlueskyError.invalidCredentials }
+        let tokens = try await ATProtoOAuthService().refresh(
+            tokenEndpoint: oauth.tokenEndpoint, refreshToken: oauth.refreshToken,
+            dpop: DPoPProofBuilder(key: try oauth.dpopKey()))
+        let updated = ATProtoOAuthSession(
+            did: oauth.did, handle: oauth.handle,
+            accessToken: tokens.accessToken, refreshToken: tokens.refreshToken,
+            dpopPrivateKey: oauth.dpopPrivateKey, pdsURL: oauth.pdsURL,
+            authorizationServer: oauth.authorizationServer, tokenEndpoint: oauth.tokenEndpoint)
+        try keychain.set(updated, for: Self.oauthAccount)
+        oauthSession = updated
+    }
+
+    /// True when the active session is OAuth (DPoP) rather than an app password. Lets wiring that
+    /// still constructs Bearer requests from `session.accessJwt` fall back correctly.
+    public var isOAuth: Bool { oauthSession != nil }
 }

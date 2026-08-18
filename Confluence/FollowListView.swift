@@ -32,8 +32,8 @@ struct FollowListView: View {
         defer { loading = false }
         switch network {
         case .bluesky:
-            guard let session = bluesky.session else { return }
-            actors = (try? await BlueskyClient().followList(accessToken: session.accessJwt, actor: authorID, kind: kind)) ?? []
+            guard bluesky.isLoggedIn else { return }
+            actors = (try? await bluesky.withAuth { auth, _ in try await BlueskyClient().followList(auth: auth, actor: authorID, kind: kind) }) ?? []
         case .mastodon:
             guard let session = mastodon.session else { return }
             actors = (try? await MastodonClient().followList(host: session.host, accessToken: session.accessToken, accountID: authorID, kind: kind)) ?? []

@@ -17,7 +17,7 @@ struct NotificationDecodingTests {
             #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer tok")
             return (request.status(200), json)
         })
-        let notes = try await client.notifications(accessToken: "tok")
+        let notes = try await client.notifications(auth: .bearer("tok"))
         #expect(notes.map(\.kind) == [.follow, .repost, .mention]) // like filtered out
         #expect(notes[0].actorName == "Alice")
         #expect(notes[0].actorID == "did:plc:alice")

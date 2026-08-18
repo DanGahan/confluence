@@ -38,7 +38,7 @@ struct BlueskyChatTests {
             #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer tok")
             return (request.status(200), json)
         })
-        let convos = try await client.listConvos(accessToken: "tok", selfDID: "did:me")
+        let convos = try await client.listConvos(auth: .bearer("tok"), selfDID: "did:me")
         #expect(convos.count == 1)
         #expect(convos[0].participants.map(\.id) == ["did:ada"]) // self dropped
         #expect(convos[0].title == "Ada")
@@ -58,7 +58,7 @@ struct BlueskyChatTests {
             #expect(request.url?.path == "/xrpc/chat.bsky.convo.getMessages")
             return (request.status(200), json)
         })
-        let msgs = try await client.messages(convoId: "c1", accessToken: "tok", selfDID: "did:me")
+        let msgs = try await client.messages(convoId: "c1", auth: .bearer("tok"), selfDID: "did:me")
         #expect(msgs.map(\.rawId) == ["m1", "m2"])       // oldest first, deleted dropped
         #expect(msgs[0].isFromMe == true)
         #expect(msgs[1].isFromMe == false)
@@ -74,7 +74,7 @@ struct BlueskyChatTests {
             let resp = #"{"id":"m9","text":"yo","sentAt":"2026-07-01T11:00:00.000Z","sender":{"did":"did:me"}}"#
             return (request.status(200), resp.data(using: .utf8)!)
         })
-        let dm = try await client.sendMessage(convoId: "c1", text: "yo", accessToken: "tok", selfDID: "did:me")
+        let dm = try await client.sendMessage(convoId: "c1", text: "yo", auth: .bearer("tok"), selfDID: "did:me")
         #expect(dm.rawId == "m9")
         #expect(dm.isFromMe == true)
     }
@@ -98,7 +98,7 @@ struct BlueskyChatTests {
             (request.status(403), #"{"error":"AccessDenied"}"#.data(using: .utf8)!)
         })
         await #expect(throws: BlueskyError.invalidCredentials) {
-            _ = try await client.listConvos(accessToken: "tok", selfDID: "did:me")
+            _ = try await client.listConvos(auth: .bearer("tok"), selfDID: "did:me")
         }
     }
 }

@@ -27,7 +27,7 @@ struct FeedDecodingTests {
             #expect(request.url?.path == "/xrpc/app.bsky.feed.getTimeline")
             return (request.status(200), json)
         })
-        let page = try await client.timeline(accessToken: "tok", cursor: nil)
+        let page = try await client.timeline(auth: .bearer("tok"), cursor: nil)
         #expect(page.nextCursor == "next-page")
         let item = try #require(page.items.first)
         #expect(item.network == .bluesky)
@@ -63,7 +63,7 @@ struct FeedDecodingTests {
         }
         """.data(using: .utf8)!
         let client = BlueskyClient(session: MockURLProtocol.session { ($0.status(200), json) })
-        let item = try #require(try await client.timeline(accessToken: "t", cursor: nil).items.first)
+        let item = try #require(try await client.timeline(auth: .bearer("t"), cursor: nil).items.first)
         #expect(item.isReply == true)
         #expect(item.replyRoot == PostRef(uri: "at://did/app.bsky.feed.post/root", cid: "bafyroot"))
     }
@@ -77,7 +77,7 @@ struct FeedDecodingTests {
         }}]}
         """.data(using: .utf8)!
         let client = BlueskyClient(session: MockURLProtocol.session { ($0.status(200), json) })
-        let item = try #require(try await client.timeline(accessToken: "t", cursor: nil).items.first)
+        let item = try #require(try await client.timeline(auth: .bearer("t"), cursor: nil).items.first)
         #expect(item.isReply == false)
         #expect(item.replyRoot == nil)
     }
@@ -103,7 +103,7 @@ struct FeedDecodingTests {
         let client = BlueskyClient(session: MockURLProtocol.session { request in
             (request.status(200), json)
         })
-        let item = try #require(try await client.timeline(accessToken: "tok", cursor: nil).items.first)
+        let item = try #require(try await client.timeline(auth: .bearer("tok"), cursor: nil).items.first)
         let card = try #require(item.linkCard)
         #expect(card.url.absoluteString == "https://example.com/story")
         #expect(card.title == "Big Story")
@@ -131,7 +131,7 @@ struct FeedDecodingTests {
         }
         """.data(using: .utf8)!
         let client = BlueskyClient(session: MockURLProtocol.session { ($0.status(200), json) })
-        let item = try #require(try await client.timeline(accessToken: "tok", cursor: nil).items.first)
+        let item = try #require(try await client.timeline(auth: .bearer("tok"), cursor: nil).items.first)
         let video = try #require(item.videos.first)
         #expect(video.url.absoluteString == "https://video.cdn/playlist.m3u8")
         #expect(video.thumbnailURL?.absoluteString == "https://video.cdn/thumb.jpg")
@@ -161,7 +161,7 @@ struct FeedDecodingTests {
         }
         """.data(using: .utf8)!
         let client = BlueskyClient(session: MockURLProtocol.session { ($0.status(200), json) })
-        let item = try #require(try await client.timeline(accessToken: "tok", cursor: nil).items.first)
+        let item = try #require(try await client.timeline(auth: .bearer("tok"), cursor: nil).items.first)
         let video = try #require(item.videos.first)
         #expect(video.url.absoluteString == "https://video.cdn/nested.m3u8")
         #expect(video.thumbnailURL?.absoluteString == "https://video.cdn/nested-thumb.jpg")
@@ -172,7 +172,7 @@ struct FeedDecodingTests {
             #expect(request.url?.query?.contains("cursor=abc") == true)
             return (request.status(200), #"{"feed":[]}"#.data(using: .utf8)!)
         })
-        let page = try await client.timeline(accessToken: "tok", cursor: "abc")
+        let page = try await client.timeline(auth: .bearer("tok"), cursor: "abc")
         #expect(page.items.isEmpty)
         #expect(page.nextCursor == nil)
     }
@@ -191,7 +191,7 @@ struct FeedDecodingTests {
         }]}
         """.data(using: .utf8)!
         let client = BlueskyClient(session: MockURLProtocol.session { ($0.status(200), json) })
-        let item = try #require(try await client.timeline(accessToken: "t", cursor: nil).items.first)
+        let item = try #require(try await client.timeline(auth: .bearer("t"), cursor: nil).items.first)
         #expect(item.createdAt == ISO8601DateFormatter().date(from: "2026-07-01T12:00:00Z"))
         #expect(item.repostedBy == "Reposter")
     }
@@ -217,7 +217,7 @@ struct FeedDecodingTests {
             (request.status(400), #"{"error":"ExpiredToken","message":"Token has expired"}"#.data(using: .utf8)!)
         })
         await #expect(throws: BlueskyError.invalidCredentials) {
-            try await client.timeline(accessToken: "stale", cursor: nil)
+            try await client.timeline(auth: .bearer("stale"), cursor: nil)
         }
     }
 
