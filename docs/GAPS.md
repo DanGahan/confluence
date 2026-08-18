@@ -18,12 +18,12 @@ authoritative in-place markers), the SPEC, and open bug issues. When you add a
 
 | # | Shortcut | Where | Repay when |
 |---|---|---|---|
-| G5 | Mastodon HTML → text is a regex strip + common entities | `MastodonFeed.swift` (`htmlToPlainText`) | If posts render wrong entities/tags in the wild; swap for a real parser |
+| ~~G5~~ | ~~Mastodon HTML → text is a regex strip + common entities~~ — **repaid.** Now decodes named + decimal (`&#8217;`) + hex (`&#x1F600;`) character references and tolerates real-world tag variants (`<br class>`, `<BR/>`, `</div>`). | `RichText.swift` (`decodeHTMLEntities`), `MastodonFeed.swift` (`htmlToPlainText`) | Done (#121) |
 | ~~G6~~ | ~~Image retry: linear backoff, no jitter/cap~~ — **repaid.** Now exponential backoff with jitter, capped at 2000ms. | `RemoteImage.swift` | Done |
 | G7 | Composer images: fixed 1600 px / 0.8 JPEG, no HEIC | `ComposerView.swift` | Alt-text repaid (#122). HEIC still pending — swap when users complain about quality loss. |
 | G8 | Keychain falls back to legacy keychain on `errSecMissingEntitlement` (unsigned dev builds only) | `Keychain.swift` | Delete the fallback once builds are signed with a real team |
-| G9 | `LinkClickRouter` consumes mouse-down on link glyphs, so a drag-select can't *start* on a link | `RichTextLabel.swift` | Only if users report it; accepted trade for working links |
-| G10 | No offline cache — feed is refetched every launch; SwiftData cache is the named path | SPEC decision | Only if offline reading is requested |
+| ~~G9~~ | ~~`LinkClickRouter` consumes mouse-down on link glyphs, so a drag-select can't *start* on a link~~ — **repaid.** The router now forwards the click to the correct text view; NSTextView handles it natively — plain click opens the link, drag selects text from the glyph. | `RichTextLabel.swift` | Done (#124) |
+| ~~G10~~ | ~~No offline cache — feed is refetched every launch~~ — **closed as by-design (#125).** An explicit SPEC non-goal ("no caching the spec doesn't require"), not debt. Reopen only if offline reading becomes a requirement. | SPEC decision | N/A — deliberate |
 | ~~G14~~ | ~~Quick reply (Bluesky) sets `root` = `parent`, mis-rooting a reply to a mid-thread post~~ — **repaid.** The timeline already carries `record.reply.root`; captured as `FeedItem.replyRoot` and used so replies root at the conversation. | `BlueskyFeed.swift`, `BlueskyPost.swift` | Done (#152) |
 | G16 | DMs (F15): Bluesky chat is proxied through the default PDS (`bsky.social`); accounts on a self-hosted PDS won't reach the chat service. Mastodon threads cost two calls (status + `/context`); no pagination on messages/convos (first page only). No optimistic append on send failure beyond an inline retry. Bluesky DM-scope app-password fix is a text hint in the inbox, not a Settings re-auth flow. | `BlueskyChat.swift`, `MastodonConversations.swift`, `DirectMessagesView.swift` | Per-PDS chat host, message pagination, and a Settings-driven app-password re-issue flow if users hit these |
 | G15 | Quick reply: (a) no optimistic insert — box collapses on success, next refresh shows the reply; (b) single-line field — a vertical-growth `TextField` inside the LazyVStack row explodes `sizeThatFits` and beachballs, so the field is fixed-height. (Character counter repaid: Bluesky 300 hard cap, Mastodon 500 soft guide.) | `QuickReply.swift` | (a) if users want the reply to appear instantly; (b) multiline needs a fixed-frame `TextEditor`, never `axis: .vertical`, in the lazy row |
@@ -33,7 +33,7 @@ authoritative in-place markers), the SPEC, and open bug issues. When you add a
 | # | Gap | Where | Repay when |
 |---|---|---|---|
 | ~~G11~~ | ~~`FeedView.swift` is 674 lines / holds the closure-wiring~~ — **repaid.** Wiring extracted to `FeedWiring`; FeedView down to ~515 lines. | `FeedWiring.swift` | Done (#108) |
-| G12 | `FeedWindowConfigurator` polls `asyncAfter(0.05)` until the window exists to force tab grouping | `ConfluenceApp.swift` | If Apple ships SwiftUI tabbing control; until then it's contained |
+| ~~G12~~ | ~~`FeedWindowConfigurator` polls `asyncAfter(0.05)` until the window exists to force tab grouping~~ — **closed as an accepted permanent workaround (#109).** SwiftUI exposes no API to control window tab-grouping; contained and working. Reopen if Apple ships one. | `ConfluenceApp.swift` | N/A — needs Apple API |
 | ~~G13~~ | ~~`EphemeralSecureStore` is `@unchecked Sendable`~~ — **repaid.** Now `Synchronization.Mutex`, checked-Sendable (macOS 26 floor). | `Keychain.swift` | Done (#110) |
 
 ## Open bugs that are debt until fixed

@@ -15,7 +15,9 @@ import AppKit
 /// Fix: `LinkClickRouter`, a window-level event monitor that sees every left-click before
 /// SwiftUI/AppKit dispatch. It asks each *registered, visible* text view directly whether the
 /// click lands on one of its link glyphs (no hit-testing, so stale platform-view frames can't
-/// misroute), opens the link, and consumes the event. Everything else passes through.
+/// misroute), then hands the event to *that* text view so NSTextView handles it natively — a
+/// plain click activates the link (via the coordinator's `clickedOnLink`), a drag selects text
+/// starting on the glyph (#124). Everything else passes through.
 struct RichTextLabel: NSViewRepresentable {
     let attributed: AttributedString
     let openURL: OpenURLAction
@@ -38,7 +40,6 @@ struct RichTextLabel: NSViewRepresentable {
         layout.addTextContainer(container)
 
         let tv = LinkTextView(frame: .zero, textContainer: container)
-        tv.onOpenLink = { [weak coordinator = context.coordinator] url in coordinator?.openURL(url) }
         tv.isEditable = false
         tv.isSelectable = true
         tv.drawsBackground = false
@@ -86,8 +87,9 @@ struct RichTextLabel: NSViewRepresentable {
         var openURL: OpenURLAction
         init(openURL: OpenURLAction) { self.openURL = openURL }
 
-        // Fallback: fires only when the router passed the event through and AppKit happened
-        // to deliver the click to this view normally.
+        // Primary link-open path: the router forwards the click to this text view, and NSTextView
+        // calls this on a plain click (not a drag-select). Also covers any click AppKit delivers
+        // to the view directly.
         func textView(_ textView: NSTextView, clickedOnLink link: Any, at charIndex: Int) -> Bool {
             let url = (link as? URL) ?? (link as? String).flatMap { URL(string: $0) }
             guard let url else { return false }
@@ -99,8 +101,6 @@ struct RichTextLabel: NSViewRepresentable {
 
 /// NSTextView that can resolve which link (if any) sits at a point, and open it.
 final class LinkTextView: NSTextView {
-    var onOpenLink: ((URL) -> Void)?
-
     // Over a link, keep the native link menu (Open/Copy Link). Elsewhere return nil so the
     // right-click falls through to the enclosing SwiftUI row's post menu.
     override func menu(for event: NSEvent) -> NSMenu? {
@@ -159,10 +159,13 @@ enum LinkClickRouter {
                 guard tv.window === window, !tv.isHiddenOrHasHiddenAncestor,
                       !tv.visibleRect.isEmpty else { continue }
                 let p = tv.convert(event.locationInWindow, from: nil)
-                guard tv.bounds.contains(p), let url = tv.link(at: p) else { continue }
-                tv.onOpenLink?(url)
-                // ponytail: consuming here means a drag-select can't *start* on a link
-                // glyph; selection anywhere else is unaffected. Fine trade for working links.
+                guard tv.bounds.contains(p), tv.link(at: p) != nil else { continue }
+                // Drive the click on the *correct* text view directly, bypassing SwiftUI's
+                // unreliable hit-testing (#69). NSTextView then decides natively: a plain click
+                // activates the link (Coordinator.clickedOnLink), a drag starting on the glyph
+                // selects text (#124). We opened nothing ourselves, so there's no double-fire.
+                tv.window?.makeFirstResponder(tv)
+                tv.mouseDown(with: event)
                 return nil
             }
             return event
