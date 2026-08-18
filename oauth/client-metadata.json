@@ -1,12 +1,12 @@
 {
-  "client_id": "https://dangahan.github.io/confluence/oauth/client-metadata.json",
+  "client_id": "https://gahan.me.uk/confluence/oauth/client-metadata.json",
   "application_type": "native",
   "client_name": "Confluence",
   "client_uri": "https://github.com/DanGahan/confluence",
   "dpop_bound_access_tokens": true,
   "grant_types": ["authorization_code", "refresh_token"],
   "response_types": ["code"],
-  "redirect_uris": ["io.github.dangahan.confluence://oauth-callback"],
+  "redirect_uris": ["uk.me.gahan.confluence://oauth-callback"],
   "scope": "atproto transition:generic",
   "token_endpoint_auth_method": "none"
 }
