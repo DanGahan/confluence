@@ -9,6 +9,8 @@ struct BlueskyLoginView: View {
     @State private var appPassword = ""
     @State private var errorMessage: String?
     @State private var isLoggingIn = false
+    @State private var oauthMessage: String?      // #105: result of the OAuth handshake
+    @State private var isOAuthing = false
 
     private var canSubmit: Bool {
         !handle.trimmingCharacters(in: .whitespaces).isEmpty && !appPassword.isEmpty && !isLoggingIn
@@ -52,6 +54,27 @@ struct BlueskyLoginView: View {
                     .buttonStyle(.borderedProminent)
                     .disabled(!canSubmit)
             }
+
+            Divider()
+
+            // #105 slice 2: OAuth sign-in (in validation — confirms the ATProto handshake end to
+            // end). Full feed support via DPoP is slice 3; for now it just proves the connection.
+            VStack(alignment: .leading, spacing: 6) {
+                Text("New: Sign in with OAuth").font(.subheadline).bold()
+                Text("Uses your handle + the browser — no app password, and keeps 2FA. In testing.")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                HStack {
+                    if isOAuthing { ProgressView().controlSize(.small) }
+                    if let oauthMessage {
+                        Text(oauthMessage).font(.caption)
+                            .foregroundStyle(oauthMessage.hasPrefix("✓") ? .green : .red)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer()
+                    Button("Sign in with OAuth") { Task { await logInOAuth() } }
+                        .disabled(handle.trimmingCharacters(in: .whitespaces).isEmpty || isOAuthing)
+                }
+            }
         }
         .padding(20)
         .frame(width: 380)
@@ -67,5 +90,18 @@ struct BlueskyLoginView: View {
             errorMessage = (error as? LocalizedError)?.errorDescription ?? "Sign in failed. Please try again."
         }
         isLoggingIn = false
+    }
+
+    private func logInOAuth() async {
+        isOAuthing = true
+        oauthMessage = nil
+        do {
+            try await account.logInWithOAuth(handle: handle)
+            let did = account.oauthSession?.did ?? "?"
+            oauthMessage = "✓ Connected via OAuth (\(did)). Feed support lands next."
+        } catch {
+            oauthMessage = (error as? LocalizedError)?.errorDescription ?? "OAuth sign-in failed: \(error)"
+        }
+        isOAuthing = false
     }
 }

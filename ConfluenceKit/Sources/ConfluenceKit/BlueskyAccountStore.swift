@@ -7,19 +7,26 @@ import Observation
 @Observable
 public final class BlueskyAccountStore {
     public private(set) var session: BlueskySession?
+    /// An OAuth session, if the user signed in via ATProto OAuth (#105). Stored separately from the
+    /// app-password `session`; slice 3 routes calls through DPoP when this is present.
+    public private(set) var oauthSession: ATProtoOAuthSession?
 
     private let client: BlueskyClient
     private let keychain: any SecureStore
+    private let authenticator: (any WebAuthenticator)?
     private static let account = "session"
+    private static let oauthAccount = "oauth-session"
 
     public var isLoggedIn: Bool { session != nil }
 
     public init(
         client: BlueskyClient = BlueskyClient(),
-        keychain: any SecureStore = Keychain(service: "com.dangahan.confluence.bluesky")
+        keychain: any SecureStore = Keychain(service: "com.dangahan.confluence.bluesky"),
+        authenticator: (any WebAuthenticator)? = nil
     ) {
         self.client = client
         self.keychain = keychain
+        self.authenticator = authenticator
     }
 
     /// Restores a persisted session (if any) from the Keychain.
@@ -30,10 +37,25 @@ public final class BlueskyAccountStore {
     public func restore() async {
         let store = keychain
         let account = Self.account
-        let restored: BlueskySession? = await Task.detached {
-            try? store.value(BlueskySession.self, for: account)
+        let oauthAccount = Self.oauthAccount
+        let restored: (BlueskySession?, ATProtoOAuthSession?) = await Task.detached {
+            (try? store.value(BlueskySession.self, for: account),
+             try? store.value(ATProtoOAuthSession.self, for: oauthAccount))
         }.value
-        session = restored
+        session = restored.0
+        oauthSession = restored.1
+    }
+
+    /// ATProto OAuth sign-in (#105): resolve → discover → PAR → browser → token exchange, then
+    /// persist the OAuth session. Requires an injected `WebAuthenticator` for the browser step.
+    public func logInWithOAuth(handle: String, client oauthClient: ATProtoOAuthClient = .confluence) async throws {
+        guard let authenticator else { throw BlueskyError.invalidCredentials }
+        let flow = ATProtoOAuthFlow(client: oauthClient)
+        let request = try await flow.begin(handle: handle)
+        let callbackURL = try await authenticator.authenticate(url: request.authorizationURL, callbackScheme: request.callbackScheme)
+        let oauth = try await flow.complete(request, callbackURL: callbackURL, handle: handle)
+        try keychain.set(oauth, for: Self.oauthAccount)
+        oauthSession = oauth
     }
 
     public func logIn(identifier: String, appPassword: String) async throws {

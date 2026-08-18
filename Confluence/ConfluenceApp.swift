@@ -22,7 +22,7 @@ struct ConfluenceApp: App {
         let uiTest = ProcessInfo.processInfo.arguments.contains("-uiTestLoggedOut")
         let blueskyStore: any SecureStore = uiTest ? EphemeralSecureStore() : Keychain(service: "com.dangahan.confluence.bluesky")
         let mastodonStore: any SecureStore = uiTest ? EphemeralSecureStore() : Keychain(service: "com.dangahan.confluence.mastodon")
-        _bluesky = State(initialValue: BlueskyAccountStore(keychain: blueskyStore))
+        _bluesky = State(initialValue: BlueskyAccountStore(keychain: blueskyStore, authenticator: WebAuthSession()))
         _mastodon = State(initialValue: MastodonAccountStore(authenticator: WebAuthSession(), keychain: mastodonStore))
     }
 
