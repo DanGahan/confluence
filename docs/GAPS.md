@@ -10,7 +10,7 @@ authoritative in-place markers), the SPEC, and open bug issues. When you add a
 | # | Gap | Where | Repay when |
 |---|---|---|---|
 | ~~G1~~ | ~~No 429 rate-limit backoff~~ — **repaid.** Central `URLSession.dataWithRateLimit(for:)` honours `Retry-After` (else exponential backoff + jitter, 3 retries, 30s cap). Both clients throw `.rateLimited` on exhaustion; `FeedStore`/`NotificationStore` expose a distinct `rateLimitedNetworks` set surfaced as a "try again in a moment" banner. | — | Done (#104) |
-| G2 | **Bluesky auth is app-password only.** ATProto OAuth is the sanctioned path; app passwords bypass 2FA and will eventually be deprecated. | `BlueskyClient.swift`, `BlueskyAccountStore.swift` | When Bluesky announces deprecation, or before public distribution |
+| G2 | **Bluesky auth is app-password only.** ATProto OAuth is the sanctioned path; app passwords bypass 2FA and will eventually be deprecated. **In progress (#105):** scaffolding landed — DPoP signer (`DPoP.swift`), PDS discovery (`ATProtoDiscovery.swift`), and design doc (`docs/ATPROTO_OAUTH.md`). Slice 2 wires the OAuth flow; slice 3 wires DPoP into every XRPC call. | `BlueskyClient.swift`, `BlueskyAccountStore.swift`, `docs/ATPROTO_OAUTH.md` | When Bluesky announces deprecation, or before public distribution |
 | ~~G3~~ | ~~Engagement is one-way~~ — **repaid.** Repost/like are now toggles: Bluesky un-repost/un-like via `deleteRecord` (record URI kept per session), Mastodon `unreblog`/`unfavourite`. Optimistic, reverts on failure. | — | Done (#106) |
 | ~~G4~~ | ~~Token refresh wired per-closure~~ — **repaid.** Centralised as `BlueskyAccountStore.withFreshSession` (refresh-once-and-retry), unit-tested. | — | Done (#107) |
 
