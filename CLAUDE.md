@@ -1,6 +1,6 @@
 # CLAUDE.md — Way of working
 
-Confluence: a native macOS app showing a combined Bluesky + Mastodon feed.
+Confluence: a native Apple app (macOS + iOS, one codebase) showing a combined Bluesky + Mastodon feed.
 
 **Read these before building anything:**
 
@@ -10,7 +10,7 @@ Confluence: a native macOS app showing a combined Bluesky + Mastodon feed.
 
 ## Non-negotiables
 
-1. **Mac native.** macOS 26+, Swift 6, SwiftUI-first (AppKit only where SwiftUI genuinely can't — document why in the PR). Zero third-party dependencies: `URLSession` + `Codable` cover both APIs. System materials, SF Symbols, HIG behavior, Dark Mode, VoiceOver. No cross-platform abstractions, no web views for content.
+1. **Apple-native, one codebase (macOS + iOS).** macOS 26+ and iOS 26+ (iPhone + iPad) from a single app target, Swift 6, SwiftUI-first (AppKit/UIKit only where SwiftUI genuinely can't — document why in the PR). Platform differences go behind `#if os(...)` seams and small file-level shims — **no cross-platform abstraction layer**, and `ConfluenceKit` stays platform-free (never import AppKit/UIKit there). The macOS-only workarounds (`RichTextLabel`/`LinkClickRouter`, window-tab configurator, window-restore hack) exist to patch macOS SwiftUI bugs — do not port them to iOS without confirming iOS needs them (`docs/IOS_PLAN.md`). Zero third-party dependencies: `URLSession` + `Codable` cover both APIs. System materials, SF Symbols, HIG behavior, Dark Mode, VoiceOver, Dynamic Type (iOS). No web views for content.
 2. **Re-use before new code.** Extend the existing pattern (normalized models, closure-injected stores, `RemoteImage`, `RichTextLabel`, `MockURLProtocol`) rather than inventing a parallel one. If something similar exists, use it or improve it — never duplicate it. `docs/PROJECT.md` has a "where do I…" index; start there.
 3. **Simplified codebase, minimal tech debt.** Simplest implementation that meets the acceptance criteria. No speculative scaffolding, no abstractions with one caller, no databases or caching layers the spec doesn't require. Deliberate ceilings get a `// ponytail:` comment naming the upgrade path **and** a row in `docs/GAPS.md` — debt is only acceptable when it's tracked.
 
@@ -60,6 +60,7 @@ Rules: never call the real APIs from tests; every bug fix starts with a test rep
 
 - Work is GitHub issues on the [Confluence project board](https://github.com/users/DanGahan/projects/4) (New → In Progress → In QA → Done, plus Blocked). Every issue goes on the board. Move status with `gh` as you go; note blockers on the issue.
 - Small vertical slices: one SPEC feature (or sub-bullet) per PR.
+- **PRs target `dev`, not `main`.** `main` is the prod-release track and is protected — direct pushes and unpromoted PRs are rejected. `dev` gets an auto-release on every push; a manual `dev → main` promotion PR cuts prod. Full model + diagram in [`docs/RELEASING.md`](docs/RELEASING.md).
 - If a spec ambiguity blocks you, note the interpretation you chose in the PR rather than stalling.
 
 ## Commands

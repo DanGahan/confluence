@@ -56,6 +56,18 @@ struct NotificationStoreTests {
         NotificationStore(defaults: UserDefaults(suiteName: "test.\(UUID().uuidString)")!)
     }
 
+    @Test func mentionsFilterByKindAndNetwork() {
+        func note(_ n: Network, _ id: String, _ k: NotificationItem.Kind) -> NotificationItem {
+            NotificationItem(network: n, rawId: id, kind: k, actorID: id, actorName: "A",
+                             actorHandle: "a", avatarURL: nil, createdAt: Date())
+        }
+        let items = [note(.bluesky, "1", .follow), note(.bluesky, "2", .mention),
+                     note(.mastodon, "3", .mention), note(.mastodon, "4", .repost)]
+        #expect(items.mentions().map(\.rawId) == ["2", "3"])
+        #expect(items.mentions(network: .bluesky).map(\.rawId) == ["2"])
+        #expect(items.mentions(network: .mastodon).map(\.rawId) == ["3"])
+    }
+
     @Test func refreshMergesAndCountsAllUnreadInitially() async {
         let sut = store()
         sut.setFetchers([

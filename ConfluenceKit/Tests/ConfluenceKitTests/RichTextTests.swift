@@ -25,6 +25,17 @@ struct RichTextTests {
         #expect(ProfileLink.blueskyWebProfileHandle(URL(string: "https://example.com/profile/x")!) == nil)
     }
 
+    @Test func blueskyWebPostRefParsing() {
+        let ref = ProfileLink.blueskyWebPostRef(URL(string: "https://bsky.app/profile/lisaocarroll.bsky.social/post/3msoiqa3vjs2y")!)
+        #expect(ref?.handle == "lisaocarroll.bsky.social")
+        #expect(ref?.rkey == "3msoiqa3vjs2y")
+        #expect(ProfileLink.blueskyWebPostRef(URL(string: "https://www.bsky.app/profile/bob.test/post/xyz")!)?.rkey == "xyz")
+        // Profile-only, wrong host, and non-post sub-paths don't match.
+        #expect(ProfileLink.blueskyWebPostRef(URL(string: "https://bsky.app/profile/alice.bsky.social")!) == nil)
+        #expect(ProfileLink.blueskyWebPostRef(URL(string: "https://bsky.app/profile/alice/feed/xyz")!) == nil)
+        #expect(ProfileLink.blueskyWebPostRef(URL(string: "https://example.com/profile/a/post/b")!) == nil)
+    }
+
     @Test func mastodonStatusURLRecognition() {
         // Modern web permalink: /@user/{numeric id}, local and remote handles.
         #expect(ProfileLink.looksLikeMastodonStatus(URL(string: "https://mastodon.macstories.net/@appstories/116872581526086363")!))

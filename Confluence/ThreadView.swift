@@ -34,7 +34,9 @@ struct ThreadView: View {
             }
             .navigationTitle("Thread")
         }
-        .frame(width: contentWidth + 32, height: 620)
+        #if os(macOS)
+        .frame(width: contentWidth + 32, height: 620) // macOS sheet size; iOS fills the sheet
+        #endif
         .overlay(alignment: .topLeading) { SheetCloseButton { dismiss() }.padding(12) }
         .handleProfileLinks()
         .task { await load() }
@@ -50,7 +52,7 @@ struct ThreadView: View {
                         Divider()
                     }
                 }
-                .frame(width: contentWidth, alignment: .leading)
+                .frame(maxWidth: contentWidth, alignment: .leading)
                 .padding(16)
             }
             .onAppear {
@@ -92,6 +94,7 @@ private struct ThreadPostRow: View {
     let post: FeedItem
     let isFocus: Bool
     @State private var showingProfile = false
+    @State private var replyExpanded = false
 
     private var isFollowing: Bool { follows.isFollowing(post) }
     private var networkName: String { post.network == .bluesky ? "Bluesky" : "Mastodon" }
@@ -111,8 +114,7 @@ private struct ThreadPostRow: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
-                    Text(post.authorName).fontWeight(.semibold).lineLimit(1)
-                    Text("@\(post.authorHandle)").foregroundStyle(.secondary).lineLimit(1)
+                    AuthorLabel(item: post)
                     Spacer(minLength: 4)
                     NetworkBadge(network: post.network)
                     Text(post.createdAt, format: .relative(presentation: .named))
@@ -138,7 +140,10 @@ private struct ThreadPostRow: View {
         .padding(.vertical, 8)
         .padding(.horizontal, isFocus ? 8 : 0)
         .background(isFocus ? Color.accentColor.opacity(0.10) : .clear, in: RoundedRectangle(cornerRadius: 8))
+        .quickReply(post, expanded: $replyExpanded)
         .contextMenu {
+            Button("Reply", systemImage: "arrowshape.turn.up.left") { replyExpanded = true }
+            Divider()
             Button(followLabel, systemImage: isFollowing ? "person.badge.minus" : "person.badge.plus") {
                 Task { await follows.toggle(post) }
             }

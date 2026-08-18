@@ -26,7 +26,9 @@ struct NotificationsView: View {
                 .listStyle(.inset)
             }
         }
+        #if os(macOS)
         .frame(minWidth: 380, minHeight: 480)
+        #endif
         .onAppear { notifications.markSeen() }
         // Same handler used on FeedView/ProfileView/ThreadView: a tapped profile URL routes
         // to a ProfileView sheet within this sheet, keeping the notifications list underneath.
@@ -34,7 +36,7 @@ struct NotificationsView: View {
     }
 }
 
-private struct NotificationRow: View {
+struct NotificationRow: View {
     @Environment(\.openURL) private var openURL
     let item: NotificationItem
 

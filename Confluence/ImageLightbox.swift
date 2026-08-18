@@ -14,6 +14,7 @@ struct ImageLightbox: View {
     let urls: [URL]
     @State private var index: Int
     @State private var scale: CGFloat = 1
+    @State private var steadyScale: CGFloat = 1 // scale committed between pinch gestures
     @State private var offset: CGSize = .zero
     @State private var lastOffset: CGSize = .zero
     @Environment(\.dismiss) private var dismiss
@@ -41,7 +42,8 @@ struct ImageLightbox: View {
             .padding(24)
             .id(index)
             .onTapGesture { setScale(scale > minScale ? minScale : 2) }
-            .gesture(panGesture)
+            .gesture(dragOrSwipe)
+            .simultaneousGesture(pinch)
 
             if urls.count > 1 {
                 HStack {
@@ -52,7 +54,9 @@ struct ImageLightbox: View {
                 .padding(.horizontal, 8)
             }
         }
+        #if os(macOS)
         .frame(minWidth: 480, idealWidth: 900, minHeight: 360, idealHeight: 680)
+        #endif
         .overlay(alignment: .topLeading) {
             SheetCloseButton { dismiss() }.padding(12)
         }
@@ -80,26 +84,52 @@ struct ImageLightbox: View {
         .accessibilityLabel(label)
     }
 
-    /// Drag to pan, but only once zoomed in (at 1× a drag would just fight the layout).
-    private var panGesture: some Gesture {
+    /// Pinch to zoom (#195). `magnification` is relative to the gesture's start, so multiply the
+    /// scale we had when it began.
+    private var pinch: some Gesture {
+        MagnifyGesture()
+            .onChanged { v in scale = clampScale(steadyScale * v.magnification) }
+            .onEnded { _ in
+                steadyScale = scale
+                if scale <= minScale { offset = .zero; lastOffset = .zero }
+            }
+    }
+
+    /// Zoomed in → drag to pan. At 1× → a horizontal swipe pages between images (#194); a
+    /// downward swipe isn't handled here so the sheet's own swipe-to-dismiss still works.
+    private var dragOrSwipe: some Gesture {
         DragGesture()
             .onChanged { v in
                 guard scale > minScale else { return }
                 offset = CGSize(width: lastOffset.width + v.translation.width,
                                 height: lastOffset.height + v.translation.height)
             }
-            .onEnded { _ in lastOffset = offset }
+            .onEnded { v in
+                if scale > minScale { lastOffset = offset; return }
+                guard urls.count > 1 else { return }
+                let threshold: CGFloat = 50
+                if v.translation.width <= -threshold { go(to: index + 1) }        // swipe left → next
+                else if v.translation.width >= threshold { go(to: index - 1) }     // swipe right → prev
+            }
     }
+
+    private func go(to target: Int) {
+        guard target >= 0, target < urls.count else { return }
+        withAnimation { index = target }
+    }
+
+    private func clampScale(_ s: CGFloat) -> CGFloat { min(max(s, minScale), maxScale) }
 
     private func setScale(_ target: CGFloat) {
         withAnimation(.easeOut(duration: 0.15)) {
-            scale = min(max(target, minScale), maxScale)
+            scale = clampScale(target)
+            steadyScale = scale
             if scale == minScale { offset = .zero; lastOffset = .zero } // recenter at 1×
         }
     }
 
     private func resetZoom() {
-        scale = minScale; offset = .zero; lastOffset = .zero
+        scale = minScale; steadyScale = minScale; offset = .zero; lastOffset = .zero
     }
 
     @ViewBuilder private func pager(systemName: String, to target: Int) -> some View {

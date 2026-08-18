@@ -29,6 +29,17 @@ public struct PostVideo: Sendable, Equatable, Identifiable {
     public var id: String { url.absoluteString }
 }
 
+/// A Bluesky strong reference: a record's URI paired with its content hash (CID). Used to point
+/// a reply at its parent and thread root.
+public struct PostRef: Sendable, Equatable {
+    public let uri: String
+    public let cid: String
+    public init(uri: String, cid: String) {
+        self.uri = uri
+        self.cid = cid
+    }
+}
+
 /// A single post in the combined feed, normalized across networks.
 public struct FeedItem: Identifiable, Sendable, Equatable {
     public let network: Network
@@ -62,6 +73,9 @@ public struct FeedItem: Identifiable, Sendable, Equatable {
     public let isReply: Bool
     /// Bluesky post CID — the content hash needed alongside the URI to repost/like. nil for Mastodon.
     public let cid: String?
+    /// Bluesky thread root ref, when this post is itself a reply — so a reply *to* this post is
+    /// rooted at the conversation, not at a mid-thread post. nil for top-level posts and Mastodon.
+    public let replyRoot: PostRef?
     /// Public web URL for the post (Share, Reading List). bsky.app / instance permalink.
     public let postURL: URL?
 
@@ -76,7 +90,7 @@ public struct FeedItem: Identifiable, Sendable, Equatable {
                 imageURLs: [URL] = [], videos: [PostVideo] = [], linkCard: LinkCard? = nil, repostedBy: String? = nil,
                 isFollowing: Bool = false, followURI: String? = nil,
                 threadID: String? = nil, replyCount: Int = 0, isReply: Bool = false,
-                cid: String? = nil, postURL: URL? = nil) {
+                cid: String? = nil, replyRoot: PostRef? = nil, postURL: URL? = nil) {
         self.network = network
         self.rawId = rawId
         self.authorID = authorID
@@ -96,6 +110,7 @@ public struct FeedItem: Identifiable, Sendable, Equatable {
         self.replyCount = replyCount
         self.isReply = isReply
         self.cid = cid
+        self.replyRoot = replyRoot
         self.postURL = postURL
     }
 }

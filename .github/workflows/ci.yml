@@ -1,0 +1,112 @@
+name: CI
+
+# Runs on every PR to dev/main and every push to dev/main, and is invoked by both
+# release workflows before they build so a bad commit can't cut a release. UI tests
+# stay out of CI by policy (per docs/RELEASING.md → CI checks); they're a
+# pre-merge local concern per CLAUDE.md's pyramid.
+on:
+  pull_request:
+    branches: [dev, main]
+  push:
+    branches: [dev, main]
+  workflow_call:
+
+concurrency:
+  # Cancel superseded PR runs but never cancel pushes to dev/main (release-critical).
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# Minimal default token scope; the SAST job widens to security-events: write.
+permissions:
+  contents: read
+
+jobs:
+  test-package:
+    name: Tests (unit + integration)
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Run ConfluenceKit tests
+        run: swift test --package-path ConfluenceKit
+
+  build-check:
+    name: Build (app target, unsigned)
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install xcodegen
+        run: brew install xcodegen
+      - name: Generate Xcode project
+        run: xcodegen generate
+      # Debug build with signing disabled — catches app-target compile regressions
+      # (which swift test alone doesn't cover) without needing any signing setup.
+      - name: Build
+        run: |
+          set -euxo pipefail
+          xcodebuild \
+            -scheme Confluence \
+            -configuration Debug \
+            -destination 'platform=macOS' \
+            -derivedDataPath build \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY=- \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+  build-check-ios:
+    name: Build (iOS app, simulator)
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install xcodegen
+        run: brew install xcodegen
+      - name: Generate Xcode project
+        run: xcodegen generate
+      # iOS Simulator build — no signing needed. Catches iOS-specific regressions
+      # (a new AppKit-only API, a missing #if os() gate) that the macOS build misses.
+      # generic/platform avoids depending on a specific booted simulator device.
+      - name: Build
+        run: |
+          set -euxo pipefail
+          xcodebuild \
+            -scheme Confluence \
+            -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+  sast:
+    name: SAST (Semgrep)
+    # Runs on Linux — Semgrep is a source-only scanner, no macOS toolchain needed,
+    # so it's ~10x cheaper than a macOS runner. CodeQL for Swift was tried and
+    # dropped: both build-mode: manual and autobuild hung >30 min on this codebase
+    # against Swift 6.2 / macOS 26 SDK. Semgrep runs in a couple of minutes and
+    # uploads SARIF to the Security tab the same way CodeQL would have.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      security-events: write
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install Semgrep
+        # pipx keeps semgrep isolated from the runner's system Python; --python
+        # picks whichever Python 3 is on PATH.
+        run: pipx install semgrep
+      - name: Run Semgrep
+        # `p/default` = curated OWASP-style + common-footgun ruleset. Explicit
+        # SARIF path so the upload step below knows where to look. `--error`
+        # makes findings fail the job (blocking CI).
+        run: semgrep --config=p/default --sarif --output=semgrep.sarif --error .
+      - name: Upload SARIF
+        # Run even if Semgrep exited non-zero — we still want the findings on
+        # the Security tab so they're triageable.
+        if: always()
+        uses: github/codeql-action/upload-sarif@3b0bd1d116c0bde30213346b22d4f634d96a2fb0 # v3
+        with:
+          sarif_file: semgrep.sarif
+          category: semgrep

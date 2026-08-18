@@ -1,5 +1,4 @@
 import SwiftUI
-import AppKit
 
 // Bridge menu-bar commands (Scene-level) to the focused feed window's actions.
 extension FocusedValues {
@@ -11,7 +10,11 @@ extension FocusedValues {
     @Entry var availableOwnScopes: Set<OwnFeedScope>?
 }
 
-/// Standard menu-bar commands. Edit/Window/Help come from SwiftUI automatically.
+#if os(macOS)
+import AppKit
+
+/// Standard menu-bar commands. Edit/Window/Help come from SwiftUI automatically. macOS-only —
+/// iOS has no menu bar (iPad hardware-keyboard shortcuts are a later nice-to-have).
 struct AppCommands: Commands {
     @FocusedValue(\.refreshFeed) private var refreshFeed
     @FocusedValue(\.scrollFeedToTop) private var scrollFeedToTop
@@ -21,6 +24,12 @@ struct AppCommands: Commands {
     @FocusedValue(\.availableOwnScopes) private var availableOwnScopes
 
     var body: some Commands {
+        // Replace the default "About Confluence" menu item so it opens our custom About
+        // window (which surfaces the release version and the git commit the artefact was
+        // built from — see BuildInfo).
+        CommandGroup(replacing: .appInfo) {
+            Button("About Confluence") { AboutWindow.show() }
+        }
         CommandMenu("My Posts") {
             ForEach(OwnFeedScope.allCases) { scope in
                 Button(scope.title) { openOwnFeed?(scope) }
@@ -55,3 +64,5 @@ struct AppCommands: Commands {
         }
     }
 }
+
+#endif

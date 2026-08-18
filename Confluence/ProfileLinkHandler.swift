@@ -1,5 +1,4 @@
 import SwiftUI
-import AppKit
 import ConfluenceKit
 
 private struct ProfileTarget: Identifiable {
@@ -14,10 +13,16 @@ private struct ProfileTarget: Identifiable {
 private enum LinkSheet: Identifiable {
     case profile(ProfileTarget)
     case thread(FeedItem)
+    #if os(iOS)
+    case web(URL)
+    #endif
     var id: String {
         switch self {
         case .profile(let t): return "profile:\(t.id)"
         case .thread(let item): return "thread:\(item.id)"
+        #if os(iOS)
+        case .web(let url): return "web:\(url.absoluteString)"
+        #endif
         }
     }
 }
@@ -27,38 +32,51 @@ private enum LinkSheet: Identifiable {
 /// opens in the default browser.
 private struct ProfileLinkHandler: ViewModifier {
     @Environment(MastodonAccountStore.self) private var mastodon
+    @Environment(BlueskyAccountStore.self) private var bluesky
+    #if os(iOS)
+    @AppStorage(BrowsingPreference.openLinksInAppKey) private var openLinksInApp = BrowsingPreference.openLinksInAppDefault
+    #endif
     @State private var sheet: LinkSheet?
     @State private var resolvingStatus: URL?
+    @State private var resolvingBlueskyPost: URL?
 
     func body(content: Content) -> some View {
         content
             .environment(\.openURL, OpenURLAction { url in
-                if let profile = ProfileLink.parse(url) {
-                    sheet = .profile(ProfileTarget(network: profile.network, accountID: profile.id, handle: profile.handle))
-                    return .handled
-                }
-                if let handle = ProfileLink.blueskyWebProfileHandle(url) {
+                // Routing decision lives in the unit-tested classifyLink (ConfluenceKit) so a
+                // rewrite can't silently drop a case again (#154 → #207).
+                switch classifyLink(url, hasBluesky: bluesky.isLoggedIn, hasMastodon: mastodon.session != nil) {
+                case .appProfile(let network, let id, let handle):
+                    sheet = .profile(ProfileTarget(network: network, accountID: id, handle: handle))
+                case .blueskyProfile(let handle):
                     sheet = .profile(ProfileTarget(network: .bluesky, accountID: handle, handle: handle))
-                    return .handled
+                case .blueskyThread:
+                    resolvingBlueskyPost = url // resolved async (handle→DID) then opened
+                case .mastodonThread:
+                    resolvingStatus = url      // resolved async onto the user's instance
+                case .web:
+                    #if os(iOS)
+                    // iOS: external web links open in the in-app browser by default; off → system.
+                    if openLinksInApp, url.scheme == "http" || url.scheme == "https" {
+                        sheet = .web(url)
+                        return .handled
+                    }
+                    #endif
+                    // Open web links ourselves: `.systemAction` from a programmatically invoked
+                    // OpenURLAction (our NSTextView delegate calls this) doesn't reliably open.
+                    openExternally(url)
                 }
-                // A Mastodon status permalink → open its thread in-app. Needs a Mastodon
-                // session to resolve the (usually remote) status onto the user's instance;
-                // without one, fall through to the browser.
-                if mastodon.session != nil, ProfileLink.looksLikeMastodonStatus(url) {
-                    resolvingStatus = url
-                    return .handled
-                }
-                // Open web links ourselves: `.systemAction` returned from a programmatically
-                // invoked OpenURLAction (our NSTextView delegate calls this) doesn't reliably
-                // open, which left every post link dead.
-                NSWorkspace.shared.open(url)
                 return .handled
             })
             .task(id: resolvingStatus) { await resolveStatus() }
+            .task(id: resolvingBlueskyPost) { await resolveBlueskyPost() }
             .sheet(item: $sheet) { s in
                 switch s {
                 case .profile(let t): ProfileView(network: t.network, authorID: t.accountID, handle: t.handle)
                 case .thread(let item): ThreadView(item: item)
+                #if os(iOS)
+                case .web(let url): SafariView(url: url).ignoresSafeArea()
+                #endif
                 }
             }
     }
@@ -71,9 +89,30 @@ private struct ProfileLinkHandler: ViewModifier {
         if let post = results.posts.first {
             sheet = .thread(post)
         } else {
-            NSWorkspace.shared.open(url) // couldn't resolve it — open normally
+            openExternally(url) // couldn't resolve it — open normally
         }
         resolvingStatus = nil
+    }
+
+    /// Resolves a tapped bsky.app post URL to an `at://` URI and opens its thread. The profile
+    /// segment may be a handle (resolve → DID) or already a DID (used as-is); see blueskyPostATURI.
+    /// Falls back to the browser if a handle can't be resolved.
+    private func resolveBlueskyPost() async {
+        guard let url = resolvingBlueskyPost, let ref = ProfileLink.blueskyWebPostRef(url) else { return }
+        defer { resolvingBlueskyPost = nil }
+        do {
+            let uri = try await bluesky.withFreshSession { session in
+                try await blueskyPostATURI(profileID: ref.handle, rkey: ref.rkey) {
+                    try await BlueskyClient().resolveHandle(accessToken: session.accessJwt, handle: $0)
+                }
+            }
+            // ThreadView loads the conversation from threadID; the rest is placeholder.
+            sheet = .thread(FeedItem(network: .bluesky, rawId: uri, authorName: ref.handle,
+                                     authorHandle: ref.handle, avatarURL: nil, createdAt: Date(),
+                                     text: "", threadID: uri))
+        } catch {
+            openExternally(url) // couldn't resolve the handle — open normally
+        }
     }
 }
 
