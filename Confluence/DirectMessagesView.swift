@@ -12,9 +12,11 @@ struct DirectMessagesView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                // The app-password DM-scope hint only applies to app-password sessions; under OAuth
-                // a chat failure is a scope/other issue, not a missing DM app password.
-                if dms.failedNetworks.contains(.bluesky) && !bluesky.isOAuth { blueskyChatHint }
+                // A Bluesky chat failure needs different guidance per sign-in type: an app password
+                // needs DM access ticked; an OAuth session needs reconnecting to grant the chat scope.
+                if dms.failedNetworks.contains(.bluesky) {
+                    if bluesky.isOAuth { blueskyOAuthChatHint } else { blueskyChatHint }
+                }
                 if dms.conversations.isEmpty {
                     ContentUnavailableView("No Messages", systemImage: "envelope",
                         description: Text(dms.isLoading
@@ -43,6 +45,17 @@ struct DirectMessagesView: View {
     /// Surface that as guidance rather than a bare failure (SPEC F15).
     private var blueskyChatHint: some View {
         Label("Bluesky messages need an app password with **direct-message access**. Create one at bsky.app → Settings → App Passwords (tick \u{201C}Allow access to your direct messages\u{201D}) and sign in again.",
+              systemImage: "lock.badge.exclamationmark")
+            .font(.caption)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(8)
+            .background(.yellow.opacity(0.12))
+    }
+
+    /// OAuth sessions signed in before the chat scope was added lack DM permission. Reconnecting
+    /// re-runs the consent with `transition:chat.bsky` and enables messages.
+    private var blueskyOAuthChatHint: some View {
+        Label("Bluesky messages need permission. **Reconnect your Bluesky account** (Settings → Bluesky) to enable Direct Messages.",
               systemImage: "lock.badge.exclamationmark")
             .font(.caption)
             .frame(maxWidth: .infinity, alignment: .leading)

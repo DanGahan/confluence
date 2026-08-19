@@ -18,9 +18,16 @@ public enum BlueskyError: Error, Equatable, LocalizedError {
     case server(String)
     case network
     case malformedResponse
+    /// The account can't reach a feature it lacks permission for (chat 403 / `ScopeMissingError`):
+    /// an OAuth token without the chat scope, or an app password without DM access. Distinct from
+    /// `invalidCredentials` on purpose — refreshing the token won't help, so callers must NOT treat
+    /// it as an expired session (that would rotate the token on every DM poll).
+    case chatUnavailable
 
     public var errorDescription: String? {
         switch self {
+        case .chatUnavailable:
+            return "Bluesky Direct Messages need message permission. Reconnect your Bluesky account (or use an app password with direct-message access) to enable DMs."
         case .invalidCredentials:
             return "Incorrect handle or app password. Use your full handle (e.g. alice.bsky.social) and an app password from bsky.app — not your main password."
         case .twoFactorRequired:

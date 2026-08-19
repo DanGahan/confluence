@@ -114,9 +114,16 @@ extension BlueskyClient {
             let err = (try? JSONDecoder().decode(ChatErr.self, from: data))?.error
             // Error codes are public (no secrets/content) — logs which failure this is.
             chatLog.error("chat \(request.url?.lastPathComponent ?? "?", privacy: .public) failed: status \(http.statusCode, privacy: .public) error \(err ?? "nil", privacy: .public)")
-            // A normal app password can't reach chat (403). Surface as invalidCredentials so the
-            // UI can prompt for a DM-scoped app password rather than showing a raw error.
-            if http.statusCode == 401 || http.statusCode == 403 || err == "ExpiredToken" || err == "InvalidToken" {
+            // A 403 (ScopeMissingError) is a permission problem, not an expired token: an OAuth
+            // token without the chat scope, or an app password without DM access. Refreshing won't
+            // fix it — and mapping it to invalidCredentials makes withAuth refresh + retry on every
+            // DM poll, churning the single-use OAuth refresh token (and, before coalescing, racing
+            // it to death). Surface it distinctly so the UI prompts re-auth without a refresh (#217).
+            if http.statusCode == 403 || err == "ScopeMissingError" {
+                throw BlueskyError.chatUnavailable
+            }
+            // A genuine expired/invalid access token — let withAuth refresh once and retry.
+            if http.statusCode == 401 || err == "ExpiredToken" || err == "InvalidToken" {
                 throw BlueskyError.invalidCredentials
             }
             if http.statusCode == 429 { throw BlueskyError.rateLimited }

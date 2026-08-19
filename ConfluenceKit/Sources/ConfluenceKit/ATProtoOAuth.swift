@@ -40,7 +40,11 @@ public struct ATProtoOAuthClient: Sendable, Equatable {
         clientID: "https://gahan.me.uk/confluence/oauth/client-metadata.json",
         // Scheme must be the client_id FQDN reversed *exactly* (gahan.me.uk → uk.me.gahan), single
         // slash per RFC 8252 §7.1. Bluesky rejects extra segments like uk.me.gahan.confluence.
-        redirectURI: "uk.me.gahan:/oauth-callback"
+        redirectURI: "uk.me.gahan:/oauth-callback",
+        // `transition:chat.bsky` grants DM (chat.bsky.convo) access — without it chat 403s with
+        // ScopeMissingError (#202/F15). Must stay in sync with the hosted client-metadata.json
+        // `scope`; Bluesky rejects an authorization requesting scopes the metadata doesn't list.
+        scope: "atproto transition:generic transition:chat.bsky"
     )
 
     /// The URL scheme the app must register (Info.plist) and hand to ASWebAuthenticationSession.
