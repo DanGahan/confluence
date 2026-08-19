@@ -42,10 +42,13 @@ public enum BlueskyError: Error, Equatable, LocalizedError {
 public struct BlueskyClient: Sendable {
     public let pdsURL: URL
     let session: URLSession
+    let nonceStore: DPoPNonceStore
 
-    public init(pdsURL: URL = URL(string: "https://bsky.social")!, session: URLSession = .shared) {
+    public init(pdsURL: URL = URL(string: "https://bsky.social")!, session: URLSession = .shared,
+                nonceStore: DPoPNonceStore = .shared) {
         self.pdsURL = pdsURL
         self.session = session
+        self.nonceStore = nonceStore
     }
 
     /// `com.atproto.server.createSession` — exchanges handle + app password for tokens.
@@ -142,18 +145,25 @@ extension BlueskyClient {
             let builder = DPoPProofBuilder(key: key)
             let method = request.httpMethod ?? "GET"
             guard let url = request.url else { throw BlueskyError.malformedResponse }
-            func signed(nonce: String?) throws -> URLRequest {
+            let host = url.host ?? ""
+            // One signed attempt with the given nonce; returns the result + any fresh nonce the
+            // server handed back (which we always cache, success or not).
+            func attempt(_ nonce: String?) async throws -> (Data, HTTPURLResponse, String?) {
                 var req = request
                 req.setValue("DPoP \(token)", forHTTPHeaderField: "Authorization")
                 req.setValue(try builder.proof(htm: method, htu: url, nonce: nonce, accessToken: token),
                              forHTTPHeaderField: "DPoP")
-                return req
+                let (data, http) = try await run(req)
+                return (data, http, http.value(forHTTPHeaderField: "DPoP-Nonce"))
             }
-            let (data, http) = try await run(try signed(nonce: nil))
-            // A `DPoP-Nonce` challenge means "retry with this nonce"; a still-401 after is a real
-            // expired token, surfaced to withAuth for refresh.
-            if http.statusCode == 401, let nonce = http.value(forHTTPHeaderField: "DPoP-Nonce") {
-                return try await run(try signed(nonce: nonce))
+            var (data, http, fresh) = try await attempt(await nonceStore.nonce(for: host))
+            await nonceStore.store(fresh, for: host)
+            // Retry once if the server rejected with a nonce to use (first call, or the cached
+            // nonce rotated). A still-401 after is a real expired token → withAuth refreshes.
+            if http.statusCode == 401, let retryNonce = fresh {
+                let retried = try await attempt(retryNonce)
+                data = retried.0; http = retried.1
+                await nonceStore.store(retried.2, for: host)
             }
             return (data, http)
         }

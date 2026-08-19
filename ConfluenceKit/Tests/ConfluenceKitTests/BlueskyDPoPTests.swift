@@ -51,8 +51,28 @@ struct BlueskyDPoPTests {
                 }
             }
             return (req.status(200), #"{"feed":[]}"#.data(using: .utf8)!)
-        })
+        }, nonceStore: DPoPNonceStore()) // fresh cache so a prior test can't pre-seed it
         _ = try await client.timeline(auth: .dpop(accessToken: "tok", key: DPoPKey()), cursor: nil)
         #expect(secondCarriedNonce.value)
+    }
+
+    // The fix for the intermittent #105 failures: once a nonce is cached, later calls send it up
+    // front and skip the 401 dance — so a second timeline call is a single request, not two.
+    @Test func cachedNonceSkipsSecondChallenge() async throws {
+        let store = DPoPNonceStore()
+        let seq = Seq()
+        let requestCount = Box(0)
+        let client = BlueskyClient(session: MockURLProtocol.session { req in
+            requestCount.value += 1
+            if seq.next() == 0 { // first ever request: challenge with a nonce
+                return (HTTPURLResponse(url: req.url!, statusCode: 401, httpVersion: nil,
+                                        headerFields: ["DPoP-Nonce": "N"])!, Data())
+            }
+            return (req.status(200), #"{"feed":[]}"#.data(using: .utf8)!)
+        }, nonceStore: store)
+        let key = DPoPKey()
+        _ = try await client.timeline(auth: .dpop(accessToken: "t", key: key), cursor: nil) // 401 + retry = 2
+        _ = try await client.timeline(auth: .dpop(accessToken: "t", key: key), cursor: nil) // cached nonce = 1
+        #expect(requestCount.value == 3) // not 4 — the second call didn't re-challenge
     }
 }
