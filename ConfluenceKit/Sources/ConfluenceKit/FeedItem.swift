@@ -40,6 +40,24 @@ public struct PostRef: Sendable, Equatable {
     }
 }
 
+/// A preview of the post a reply is responding to — shown as a card below the reply, tappable to
+/// open that post's thread. `snippet` may be empty when the parent's text isn't in the feed data
+/// (Mastodon home timeline gives only the parent's author + id, not its body).
+public struct ReplyRef: Sendable, Equatable {
+    public let authorName: String
+    public let authorHandle: String
+    public let snippet: String
+    /// The parent post's id/URI — opens its thread.
+    public let threadID: String
+
+    public init(authorName: String, authorHandle: String, snippet: String, threadID: String) {
+        self.authorName = authorName
+        self.authorHandle = authorHandle
+        self.snippet = snippet
+        self.threadID = threadID
+    }
+}
+
 /// A single post in the combined feed, normalized across networks.
 public struct FeedItem: Identifiable, Sendable, Equatable {
     public let network: Network
@@ -78,6 +96,8 @@ public struct FeedItem: Identifiable, Sendable, Equatable {
     public let replyRoot: PostRef?
     /// Public web URL for the post (Share, Reading List). bsky.app / instance permalink.
     public let postURL: URL?
+    /// When this post is a reply, a preview of the post it answers (for the reply-context card).
+    public let replyParent: ReplyRef?
 
     public var id: String { "\(network.rawValue):\(rawId)" }
     /// Identity key for the author across items (follow state is tracked per author).
@@ -90,7 +110,8 @@ public struct FeedItem: Identifiable, Sendable, Equatable {
                 imageURLs: [URL] = [], videos: [PostVideo] = [], linkCard: LinkCard? = nil, repostedBy: String? = nil,
                 isFollowing: Bool = false, followURI: String? = nil,
                 threadID: String? = nil, replyCount: Int = 0, isReply: Bool = false,
-                cid: String? = nil, replyRoot: PostRef? = nil, postURL: URL? = nil) {
+                cid: String? = nil, replyRoot: PostRef? = nil, postURL: URL? = nil,
+                replyParent: ReplyRef? = nil) {
         self.network = network
         self.rawId = rawId
         self.authorID = authorID
@@ -112,6 +133,7 @@ public struct FeedItem: Identifiable, Sendable, Equatable {
         self.cid = cid
         self.replyRoot = replyRoot
         self.postURL = postURL
+        self.replyParent = replyParent
     }
 }
 

@@ -97,6 +97,12 @@ A unified DM inbox: a conversations list and a per-conversation message thread, 
 - **Security:** message bodies are hostile input — typed `Codable`, tolerate missing/extra fields, render as text (never evaluated); **never log message content** (`%{private}`); tokens stay in Keychain. Any auth/entitlement touch gets a security pass.
 - **Accessibility:** VoiceOver labels on conversation rows, messages, and the send box; usable at the 480×600 min and via VoiceOver/keyboard; Dynamic Type on iOS.
 
+### F16 — Reply-context card
+When a feed post is itself a reply, show a card below it previewing the post it's responding to, styled like the link-preview card; tapping it opens that post's thread. Everywhere the feed renders (feed, search, profile).
+- **Bluesky:** the home timeline carries the parent inline (`reply.parent` PostView) — author + text shown.
+- **Mastodon:** the timeline gives only the parent's author + id, so the card reads "Replying to @handle" and opens the thread. (`ponytail:` parent body needs a lazy `/statuses/:id` fetch — add if wanted.)
+- Not-found/blocked parents are skipped (no card). Card carries a VoiceOver label and opens the thread on tap/return.
+
 ## Non-functional requirements
 
 - Feed merge of 200 posts must complete in < 50 ms (unit-tested).

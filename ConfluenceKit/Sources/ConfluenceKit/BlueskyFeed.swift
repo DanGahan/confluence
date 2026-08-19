@@ -87,13 +87,17 @@ extension BlueskyClient {
     private struct FeedEntry: Decodable {
         let post: Post
         let reason: Reason?
+        /// Feed-level reply context: the parent/root PostViews (full content). Present when `post`
+        /// is a reply. Parent may be a not-found/blocked stub — those decode to nils and are skipped.
+        let reply: ReplyBlock?
 
         var feedItem: FeedItem? {
             // Order by timeline time: a repost's own time, else when the post was indexed —
             // NOT the original post's authored time (a repost of an old post must not sink).
             let orderString = reason?.indexedAt ?? post.indexedAt ?? post.record.createdAt
             guard let createdAt = ISO8601.date(from: orderString) else { return nil }
-            return post.makeFeedItem(orderDate: createdAt, repostedBy: reason?.by?.displayName)
+            return post.makeFeedItem(orderDate: createdAt, repostedBy: reason?.by?.displayName,
+                                     replyParent: reply?.parent?.replyRef)
         }
 
         static func attributed(from record: Record) -> AttributedString {
@@ -116,6 +120,19 @@ extension BlueskyClient {
         }
     }
 
+    private struct ReplyBlock: Decodable { let parent: ParentPost? }
+    private struct ParentPost: Decodable {
+        let uri: String?
+        let author: Author?
+        let record: ParentRecord?
+        var replyRef: ReplyRef? {
+            guard let uri, let author else { return nil } // not-found/blocked stub
+            return ReplyRef(authorName: author.displayName ?? author.handle, authorHandle: author.handle,
+                            snippet: record?.text ?? "", threadID: uri)
+        }
+    }
+    private struct ParentRecord: Decodable { let text: String? }
+
     private struct Post: Decodable {
         let uri: String
         let cid: String?
@@ -131,7 +148,7 @@ extension BlueskyClient {
             return URL(string: "https://bsky.app/profile/\(author.handle)/post/\(rkey)")
         }
 
-        func makeFeedItem(orderDate: Date, repostedBy: String?) -> FeedItem {
+        func makeFeedItem(orderDate: Date, repostedBy: String?, replyParent: ReplyRef? = nil) -> FeedItem {
             FeedItem(
                 network: .bluesky,
                 rawId: uri,
@@ -153,7 +170,8 @@ extension BlueskyClient {
                 isReply: record.reply != nil,
                 cid: cid,
                 replyRoot: record.reply?.root.map { PostRef(uri: $0.uri, cid: $0.cid) },
-                postURL: webURL
+                postURL: webURL,
+                replyParent: replyParent
             )
         }
 

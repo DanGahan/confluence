@@ -521,6 +521,7 @@ struct FeedRow: View {
     let item: FeedItem
     @State private var showingProfile = false
     @State private var showingThread = false
+    @State private var parentThread: FeedItem?   // #212: the post this reply is responding to
     @State private var replyExpanded = false
     @State private var lightbox: LightboxItem?
     @State private var confirmingBlock = false
@@ -549,6 +550,7 @@ struct FeedRow: View {
                 ProfileView(network: item.network, authorID: item.authorID, handle: item.authorHandle)
             }
             .sheet(isPresented: $showingThread) { ThreadView(item: item) }
+            .sheet(item: $parentThread) { ThreadView(item: $0) }
 
             VStack(alignment: .leading, spacing: 4) {
                 if let repostedBy = item.repostedBy {
@@ -588,6 +590,15 @@ struct FeedRow: View {
                 }
                 if let card = item.linkCard {
                     LinkCardView(card: card)
+                }
+                if let parent = item.replyParent {
+                    ReplyContextCard(reply: parent) {
+                        parentThread = FeedItem(network: item.network, rawId: parent.threadID,
+                                                authorName: parent.authorName, authorHandle: parent.authorHandle,
+                                                avatarURL: nil, createdAt: item.createdAt, text: parent.snippet,
+                                                threadID: parent.threadID)
+                    }
+                    .padding(.top, 2)
                 }
                 if item.hasThread {
                     Button { showingThread = true } label: {

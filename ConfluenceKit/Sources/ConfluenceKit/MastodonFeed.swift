@@ -126,6 +126,7 @@ extension MastodonClient {
         let reblog: Box?
         let repliesCount: Int?
         let inReplyToId: String?
+        let inReplyToAccountId: String?
         let url: String?
         let card: Card?
 
@@ -135,6 +136,15 @@ extension MastodonClient {
             case mediaAttachments = "media_attachments"
             case repliesCount = "replies_count"
             case inReplyToId = "in_reply_to_id"
+            case inReplyToAccountId = "in_reply_to_account_id"
+        }
+
+        /// Reply-context card data. The home timeline doesn't carry the parent's body, so `snippet`
+        /// is empty — the parent's author (from `mentions`) + a tap-to-open-thread is what we show.
+        var replyRef: ReplyRef? {
+            guard let parentID = inReplyToId else { return nil }
+            let handle = (mentions ?? []).first { $0.id == inReplyToAccountId }?.acct ?? ""
+            return ReplyRef(authorName: handle, authorHandle: handle, snippet: "", threadID: parentID)
         }
 
         /// Maps an <a> href (a mention's account URL) to its in-app profile link.
@@ -179,7 +189,8 @@ extension MastodonClient {
                 threadID: id, // the original status id (for a boost this is the reblog's id)
                 replyCount: repliesCount ?? 0,
                 isReply: inReplyToId != nil,
-                postURL: url.flatMap { URL(string: $0) }
+                postURL: url.flatMap { URL(string: $0) },
+                replyParent: replyRef
             )
         }
 
