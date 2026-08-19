@@ -592,7 +592,7 @@ struct FeedRow: View {
                     LinkCardView(card: card)
                 }
                 if let parent = item.replyParent {
-                    ReplyContextCard(reply: parent) {
+                    ReplyContextCard(reply: parent, network: item.network) {
                         parentThread = FeedItem(network: item.network, rawId: parent.threadID,
                                                 authorName: parent.authorName, authorHandle: parent.authorHandle,
                                                 avatarURL: nil, createdAt: item.createdAt, text: parent.snippet,

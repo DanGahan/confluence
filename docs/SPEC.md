@@ -100,7 +100,7 @@ A unified DM inbox: a conversations list and a per-conversation message thread, 
 ### F16 — Reply-context card
 When a feed post is itself a reply, show a card below it previewing the post it's responding to, styled like the link-preview card; tapping it opens that post's thread. Everywhere the feed renders (feed, search, profile).
 - **Bluesky:** the home timeline carries the parent inline (`reply.parent` PostView) — author + text shown.
-- **Mastodon:** the timeline gives only the parent's author + id, so the card reads "Replying to @handle" and opens the thread. (`ponytail:` parent body needs a lazy `/statuses/:id` fetch — add if wanted.)
+- **Mastodon:** the home timeline gives only the parent's author + id, so the card lazily fetches the parent (`GET /api/v1/statuses/:id`) to show its body, cached per id across rows.
 - Not-found/blocked parents are skipped (no card). Card carries a VoiceOver label and opens the thread on tap/return.
 
 ## Non-functional requirements

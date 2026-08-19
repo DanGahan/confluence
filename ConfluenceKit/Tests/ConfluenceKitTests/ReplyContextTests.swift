@@ -57,4 +57,17 @@ struct ReplyContextTests {
         #expect(parent.threadID == "parent123")
         #expect(parent.snippet == "") // parent body isn't in the home timeline
     }
+
+    @Test func mastodonStatusPreviewFillsInParentBody() async throws {
+        let json = #"{"id":"parent123","created_at":"2026-07-01T09:00:00.000Z","content":"<p>the original toot</p>","account":{"id":"11","display_name":"Ada","acct":"ada","avatar":"https://a"},"media_attachments":[]}"#
+        let client = MastodonClient(session: MockURLProtocol.session { req in
+            #expect(req.url?.path == "/api/v1/statuses/parent123")
+            return (req.status(200), json.data(using: .utf8)!)
+        })
+        let ref = try await client.statusPreview(host: "x.social", accessToken: "t", id: "parent123")
+        #expect(ref.authorName == "Ada")
+        #expect(ref.authorHandle == "ada@x.social")
+        #expect(ref.snippet == "the original toot")
+        #expect(ref.threadID == "parent123")
+    }
 }
