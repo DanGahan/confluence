@@ -29,7 +29,13 @@ public final class FeedStore {
         self.fetchers = fetchers
     }
 
-    public var hasMore: Bool { fetchers.keys.contains { !reachedEnd.contains($0) } }
+    /// Whether more can load. With a `filter` (the currently-shown network), reflects only that
+    /// network — so a filtered view stops spinning once *it* is exhausted, even if the hidden
+    /// network still has pages (#214).
+    public func hasMore(for filter: Network? = nil) -> Bool {
+        if let filter { return fetchers.keys.contains(filter) && !reachedEnd.contains(filter) }
+        return fetchers.keys.contains { !reachedEnd.contains($0) }
+    }
 
     public func refresh() async {
         guard !isLoading else { return }
@@ -53,13 +59,21 @@ public final class FeedStore {
         rebuild()
     }
 
-    public func loadMore() async {
-        guard !isLoading, hasMore else { return }
+    /// `filter` = the network currently shown (nil = combined). When set, paginate *that* network
+    /// so the visible list actually grows instead of silently fetching the hidden one (#214).
+    public func loadMore(preferring filter: Network? = nil) async {
+        guard !isLoading, hasMore(for: filter) else { return }
         let candidates = fetchers.keys.filter { !reachedEnd.contains($0) && !failedNetworks.contains($0) }
-        // Extend whichever loaded stream currently ends newest — that's where the merge gap is.
-        guard let network = candidates.max(by: {
-            (perNetwork[$0]?.last?.createdAt ?? .distantPast) < (perNetwork[$1]?.last?.createdAt ?? .distantPast)
-        }), let fetcher = fetchers[network] else { return }
+        let network: Network?
+        if let filter, candidates.contains(filter) {
+            network = filter
+        } else {
+            // Combined: extend whichever loaded stream ends newest — that's the merge gap.
+            network = candidates.max(by: {
+                (perNetwork[$0]?.last?.createdAt ?? .distantPast) < (perNetwork[$1]?.last?.createdAt ?? .distantPast)
+            })
+        }
+        guard let network, let fetcher = fetchers[network] else { return }
 
         isLoading = true
         defer { isLoading = false }

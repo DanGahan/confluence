@@ -58,6 +58,17 @@ struct FeedView: View {
 
     private var bothConnected: Bool { bluesky.isLoggedIn && mastodon.isLoggedIn }
 
+    /// The single network the feed is currently showing (for filter-aware pagination, #214). nil
+    /// when combined, or when only one network is connected (the store already holds just that one).
+    private var filterNetwork: Network? {
+        guard bothConnected else { return nil }
+        switch networkFilter {
+        case .both: return nil
+        case .bluesky: return .bluesky
+        case .mastodon: return .mastodon
+        }
+    }
+
     /// Feed items after applying the network filter (client-side over the merged list).
     /// Filtering only applies when both networks are connected; otherwise there's one network.
     private var visibleItems: [FeedItem] {
@@ -114,7 +125,7 @@ struct FeedView: View {
                         .padding(.vertical, 8)
                     Divider()
                 }
-                if feed.hasMore && !visibleItems.isEmpty {
+                if feed.hasMore(for: filterNetwork) && !visibleItems.isEmpty {
                     ProgressView().controlSize(.small).frame(maxWidth: .infinity).padding()
                 }
                 Color.clear.frame(height: 72) // clearance for the floating compose button
@@ -129,7 +140,7 @@ struct FeedView: View {
             // Near the bottom: within ~1200pt of the end.
             geo.contentOffset.y + geo.containerSize.height + 1200 >= geo.contentSize.height
         } action: { _, nearBottom in
-            if nearBottom { Task { await feed.loadMore() } }
+            if nearBottom { Task { await feed.loadMore(preferring: filterNetwork) } }
         }
         .refreshable { await feed.refresh() } // pull-to-refresh (iOS); harmless on macOS
     }
@@ -463,7 +474,7 @@ struct FeedView: View {
         guard !didRestore, let saved = position.savedItemID(for: networkFilter.scope) else { return }
         didRestore = true
         var extraPages = 0
-        while !feed.items.contains(where: { $0.id == saved }) && feed.hasMore && extraPages < 2 {
+        while !feed.items.contains(where: { $0.id == saved }) && feed.hasMore() && extraPages < 2 {
             await feed.loadMore()
             extraPages += 1
         }
