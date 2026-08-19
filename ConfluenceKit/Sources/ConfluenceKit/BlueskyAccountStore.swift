@@ -14,6 +14,7 @@ public final class BlueskyAccountStore {
     private let client: BlueskyClient
     private let keychain: any SecureStore
     private let authenticator: (any WebAuthenticator)?
+    private var inFlightRefresh: Task<Void, Error>?
     private static let account = "session"
     private static let oauthAccount = "oauth-session"
 
@@ -105,7 +106,7 @@ public final class BlueskyAccountStore {
         do {
             return try await body(session)
         } catch BlueskyError.invalidCredentials {
-            try await refresh()
+            try await coalescedRefresh()
             guard let fresh = await self.session else { throw BlueskyError.invalidCredentials }
             return try await body(fresh)
         }
@@ -122,7 +123,7 @@ public final class BlueskyAccountStore {
             do {
                 return try await body(.dpop(accessToken: oauth.accessToken, key: try oauth.dpopKey()), oauth.did)
             } catch BlueskyError.invalidCredentials {
-                try await refreshOAuth()
+                try await coalescedRefresh()
                 guard let fresh = await oauthSession else { throw BlueskyError.invalidCredentials }
                 return try await body(.dpop(accessToken: fresh.accessToken, key: try fresh.dpopKey()), fresh.did)
             }
@@ -131,7 +132,7 @@ public final class BlueskyAccountStore {
         do {
             return try await body(.bearer(session.accessJwt), session.did)
         } catch BlueskyError.invalidCredentials {
-            try await refresh()
+            try await coalescedRefresh()
             guard let fresh = await self.session else { throw BlueskyError.invalidCredentials }
             return try await body(.bearer(fresh.accessJwt), fresh.did)
         }
@@ -150,6 +151,24 @@ public final class BlueskyAccountStore {
             authorizationServer: oauth.authorizationServer, tokenEndpoint: oauth.tokenEndpoint)
         try keychain.set(updated, for: Self.oauthAccount)
         oauthSession = updated
+    }
+
+    /// Refreshes the active session (OAuth or app-password), coalescing concurrent callers so a
+    /// burst of 401s on token expiry triggers exactly one refresh (#217). ATProto rotates the
+    /// refresh token on use, so a second concurrent refresh with the same token fails; without
+    /// coalescing that surfaced as an intermittent "couldn't refresh" with no posts on launch.
+    /// The check-and-set is on the main actor with no `await` between, so it can't interleave.
+    func coalescedRefresh() async throws {
+        if let inFlightRefresh {
+            try await inFlightRefresh.value
+            return
+        }
+        let task = Task<Void, Error> { [self] in
+            if oauthSession != nil { try await refreshOAuth() } else { try await refresh() }
+        }
+        inFlightRefresh = task
+        defer { inFlightRefresh = nil }
+        try await task.value
     }
 
     /// True when the active session is OAuth (DPoP) rather than an app password. Lets wiring that
