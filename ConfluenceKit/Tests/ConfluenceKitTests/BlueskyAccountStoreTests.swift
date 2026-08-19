@@ -161,6 +161,35 @@ struct BlueskyAccountStoreTests {
         #expect(results == ["new", "new", "new"]) // all retried with the refreshed token
         #expect(refreshes.value == 1)             // coalesced — not 3
     }
+
+    /// #217: a dead OAuth refresh token (`invalid_grant`) can't be renewed — there's no stored
+    /// secret. The store must clear the session and raise `sessionExpired` so the UI prompts a
+    /// fresh sign-in, rather than dropping Bluesky silently or looping on "couldn't refresh".
+    @Test func deadRefreshTokenClearsOAuthSessionAndFlagsExpiry() async throws {
+        let keychain = InMemorySecureStore()
+        let key = DPoPKey()
+        let oauth = ATProtoOAuthSession(
+            did: "did:plc:abc", handle: "alice.bsky.social",
+            accessToken: "at", refreshToken: "dead",
+            dpopPrivateKey: key.exportPrivateKey(),
+            pdsURL: URL(string: "https://pds.example")!,
+            authorizationServer: URL(string: "https://bsky.social")!,
+            tokenEndpoint: URL(string: "https://bsky.social/oauth/token")!)
+        try keychain.set(oauth, for: "oauth-session")
+
+        let oauthSession = MockURLProtocol.session { req in
+            (req.status(400), #"{"error":"invalid_grant","error_description":"Invalid refresh token"}"#.data(using: .utf8)!)
+        }
+        let sut = BlueskyAccountStore(keychain: keychain, oauthURLSession: oauthSession)
+        await sut.restore()
+        #expect(sut.isLoggedIn) // OAuth session restored
+
+        await #expect(throws: BlueskyError.invalidCredentials) { try await sut.refreshOAuth() }
+        #expect(sut.oauthSession == nil)          // dead session cleared
+        #expect(sut.sessionExpired)               // UI can prompt re-auth
+        #expect(sut.isLoggedIn == false)
+        #expect((try? keychain.value(ATProtoOAuthSession.self, for: "oauth-session")) == nil)
+    }
 }
 
 private final class RefreshCounter: @unchecked Sendable {
