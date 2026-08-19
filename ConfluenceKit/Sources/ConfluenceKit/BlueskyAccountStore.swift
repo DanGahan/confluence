@@ -157,7 +157,7 @@ public final class BlueskyAccountStore {
         guard let oauth = oauthSession else { throw BlueskyError.invalidCredentials }
         let tokens: ATProtoTokens
         do {
-            authLog.info("OAuth refresh: attempting")
+            authLog.notice("OAuth refresh: attempting")
             tokens = try await ATProtoOAuthService(session: oauthURLSession).refresh(
                 tokenEndpoint: oauth.tokenEndpoint, refreshToken: oauth.refreshToken,
                 dpop: DPoPProofBuilder(key: try oauth.dpopKey()))
@@ -184,7 +184,7 @@ public final class BlueskyAccountStore {
             authorizationServer: oauth.authorizationServer, tokenEndpoint: oauth.tokenEndpoint)
         try keychain.set(updated, for: Self.oauthAccount)
         oauthSession = updated
-        authLog.info("OAuth refresh: succeeded — tokens rotated")
+        authLog.notice("OAuth refresh: succeeded — tokens rotated")
     }
 
     /// Refreshes the active session (OAuth or app-password), coalescing concurrent callers so a
