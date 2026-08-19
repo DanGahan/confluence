@@ -14,6 +14,6 @@
   "redirect_uris": [
     "uk.me.gahan:/oauth-callback"
   ],
-  "scope": "atproto transition:generic",
+  "scope": "atproto transition:generic transition:chat.bsky",
   "token_endpoint_auth_method": "none"
 }
