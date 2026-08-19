@@ -1,5 +1,8 @@
 import Foundation
 import Observation
+import os
+
+private let authLog = Logger(subsystem: "com.dangahan.confluence", category: "bluesky-auth")
 
 /// Owns Bluesky auth state for the UI: log in, restore on launch, refresh, log out.
 /// The session is persisted in the Keychain and nowhere else.
@@ -154,6 +157,7 @@ public final class BlueskyAccountStore {
         guard let oauth = oauthSession else { throw BlueskyError.invalidCredentials }
         let tokens: ATProtoTokens
         do {
+            authLog.info("OAuth refresh: attempting")
             tokens = try await ATProtoOAuthService(session: oauthURLSession).refresh(
                 tokenEndpoint: oauth.tokenEndpoint, refreshToken: oauth.refreshToken,
                 dpop: DPoPProofBuilder(key: try oauth.dpopKey()))
@@ -162,10 +166,16 @@ public final class BlueskyAccountStore {
             // refresh's response was lost to a timeout (the server rotated, we never got the new
             // token). It can't be recovered, so clear the session and flag it so the UI prompts a
             // fresh sign-in instead of dropping Bluesky silently / looping on "couldn't refresh" (#217).
+            authLog.error("OAuth refresh: invalid_grant — refresh token dead, clearing session for re-auth")
             try? keychain.delete(Self.oauthAccount)
             oauthSession = nil
             sessionExpired = true
             throw BlueskyError.invalidCredentials
+        } catch {
+            // Network/timeout etc. — recoverable, the stored token is untouched. Log so a burst of
+            // these is visible when diagnosing how often refresh actually runs.
+            authLog.error("OAuth refresh: failed (recoverable): \(error.localizedDescription, privacy: .public)")
+            throw error
         }
         let updated = ATProtoOAuthSession(
             did: oauth.did, handle: oauth.handle,
@@ -174,6 +184,7 @@ public final class BlueskyAccountStore {
             authorizationServer: oauth.authorizationServer, tokenEndpoint: oauth.tokenEndpoint)
         try keychain.set(updated, for: Self.oauthAccount)
         oauthSession = updated
+        authLog.info("OAuth refresh: succeeded — tokens rotated")
     }
 
     /// Refreshes the active session (OAuth or app-password), coalescing concurrent callers so a
