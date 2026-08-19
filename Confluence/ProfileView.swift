@@ -141,7 +141,7 @@ private struct ProfilePostRow: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             if !post.imageURLs.isEmpty {
-                PostImages(urls: post.imageURLs, letterboxHeight: 120) { start, images in
+                PostImages(urls: post.imageURLs, aspects: post.imageAspects, letterboxHeight: 120) { start, images in
                     lightbox = LightboxItem(urls: images, start: start)
                 }
             }

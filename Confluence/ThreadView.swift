@@ -172,7 +172,7 @@ private struct ThreadPostRow: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 if !post.imageURLs.isEmpty {
-                    PostImages(urls: post.imageURLs, letterboxHeight: 120)
+                    PostImages(urls: post.imageURLs, aspects: post.imageAspects, letterboxHeight: 120)
                 }
                 ForEach(post.videos) { video in
                     PostVideoView(video: video)

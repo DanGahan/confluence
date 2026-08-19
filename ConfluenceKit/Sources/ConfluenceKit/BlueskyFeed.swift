@@ -149,7 +149,8 @@ extension BlueskyClient {
         }
 
         func makeFeedItem(orderDate: Date, repostedBy: String?, replyParent: ReplyRef? = nil) -> FeedItem {
-            FeedItem(
+            let imgs = (embed?.allImages ?? []).compactMap { img in URL(string: img.fullsize).map { ($0, img.aspect) } }
+            return FeedItem(
                 network: .bluesky,
                 rawId: uri,
                 authorID: author.did,
@@ -159,7 +160,8 @@ extension BlueskyClient {
                 createdAt: orderDate,
                 text: record.text,
                 attributedText: FeedEntry.attributed(from: record),
-                imageURLs: embed?.allImages?.compactMap { URL(string: $0.fullsize) } ?? [],
+                imageURLs: imgs.map(\.0),
+                imageAspects: imgs.map(\.1),
                 videos: embed?.anyVideo?.postVideo.map { [$0] } ?? [],
                 linkCard: (embed?.allImages?.isEmpty ?? true) ? embed?.anyExternal?.linkCard : nil,
                 repostedBy: repostedBy,
@@ -264,6 +266,12 @@ extension BlueskyClient {
     }
     private struct EmbedImage: Decodable {
         let fullsize: String
+        let aspectRatio: AspectRatio?
+        var aspect: Double { aspectRatio?.value ?? 0 }
+    }
+    private struct AspectRatio: Decodable {
+        let width: Double; let height: Double
+        var value: Double { height > 0 ? width / height : 0 }
     }
     private struct ExternalEmbed: Decodable {
         let uri: String
