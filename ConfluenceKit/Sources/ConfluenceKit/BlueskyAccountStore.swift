@@ -141,9 +141,20 @@ public final class BlueskyAccountStore {
     /// Refreshes an OAuth access token via the DPoP-signed refresh grant, rotating stored tokens.
     public func refreshOAuth() async throws {
         guard let oauth = oauthSession else { throw BlueskyError.invalidCredentials }
-        let tokens = try await ATProtoOAuthService().refresh(
-            tokenEndpoint: oauth.tokenEndpoint, refreshToken: oauth.refreshToken,
-            dpop: DPoPProofBuilder(key: try oauth.dpopKey()))
+        let tokens: ATProtoTokens
+        do {
+            tokens = try await ATProtoOAuthService().refresh(
+                tokenEndpoint: oauth.tokenEndpoint, refreshToken: oauth.refreshToken,
+                dpop: DPoPProofBuilder(key: try oauth.dpopKey()))
+        } catch let ATProtoOAuthError.server(_, error, _) where error == "invalid_grant" {
+            // The refresh token is permanently dead — rotated away by a prior refresh, or that
+            // refresh's response was lost to a timeout (the server rotated, we never got the new
+            // token). It can't be recovered, so clear the session and let the app prompt a fresh
+            // sign-in instead of looping forever on "couldn't refresh" (#217).
+            try? keychain.delete(Self.oauthAccount)
+            oauthSession = nil
+            throw BlueskyError.invalidCredentials
+        }
         let updated = ATProtoOAuthSession(
             did: oauth.did, handle: oauth.handle,
             accessToken: tokens.accessToken, refreshToken: tokens.refreshToken,
