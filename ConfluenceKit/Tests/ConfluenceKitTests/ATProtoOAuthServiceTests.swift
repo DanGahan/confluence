@@ -57,7 +57,7 @@ struct ATProtoOAuthServiceTests {
             }
             retryNonce.value = dpopNonce(request) // capture the retry's proof nonce
             return (request.status(200), #"{"request_uri":"urn:ok"}"#.data(using: .utf8)!)
-        })
+        }, nonceStore: DPoPNonceStore()) // fresh cache so the first attempt starts nonce-less
         let uri = try await svc.pushAuthorizationRequest(endpoint: URL(string: "https://as.example/par")!,
                                                          params: ["client_id": "x"], dpop: dpop())
         #expect(uri == "urn:ok")

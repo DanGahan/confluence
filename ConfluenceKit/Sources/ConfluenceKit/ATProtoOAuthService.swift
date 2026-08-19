@@ -44,12 +44,15 @@ public struct ATProtoOAuthService: Sendable {
     let session: URLSession
     let client: ATProtoOAuthClient
     let appview: URL
+    let nonceStore: DPoPNonceStore
 
     public init(session: URLSession = .shared, client: ATProtoOAuthClient = .confluence,
-                appview: URL = URL(string: "https://public.api.bsky.app")!) {
+                appview: URL = URL(string: "https://public.api.bsky.app")!,
+                nonceStore: DPoPNonceStore = .shared) {
         self.session = session
         self.client = client
         self.appview = appview
+        self.nonceStore = nonceStore
     }
 
     /// Unauthenticated handle → DID via the public appview (the server resolves DNS/well-known).
@@ -114,7 +117,8 @@ public struct ATProtoOAuthService: Sendable {
     /// POSTs a form with a DPoP proof; on a `DPoP-Nonce` challenge (400/401 + the header), retries
     /// exactly once with the echoed nonce baked into a fresh proof.
     private func dpopForm(url: URL, form: [String: String], dpop: DPoPProofBuilder) async throws -> (Data, HTTPURLResponse) {
-        func send(nonce: String?) async throws -> (Data, HTTPURLResponse) {
+        let host = url.host ?? ""
+        func send(_ nonce: String?) async throws -> (Data, HTTPURLResponse, String?) {
             var request = URLRequest(url: url)
             request.httpMethod = "POST"
             request.setValue(try dpop.proof(htm: "POST", htu: url, nonce: nonce), forHTTPHeaderField: "DPoP")
@@ -124,12 +128,14 @@ public struct ATProtoOAuthService: Sendable {
             request.httpBody = components.percentEncodedQuery?.data(using: .utf8)
             let (data, response) = try await session.data(for: request)
             guard let http = response as? HTTPURLResponse else { throw ATProtoOAuthError.malformedResponse }
-            return (data, http)
+            return (data, http, http.value(forHTTPHeaderField: "DPoP-Nonce"))
         }
-        let (data, http) = try await send(nonce: nil)
-        if (http.statusCode == 400 || http.statusCode == 401),
-           let nonce = http.value(forHTTPHeaderField: "DPoP-Nonce") {
-            return try await send(nonce: nonce)
+        var (data, http, fresh) = try await send(await nonceStore.nonce(for: host))
+        await nonceStore.store(fresh, for: host)
+        if (http.statusCode == 400 || http.statusCode == 401), let retryNonce = fresh {
+            let retried = try await send(retryNonce)
+            data = retried.0; http = retried.1
+            await nonceStore.store(retried.2, for: host)
         }
         return (data, http)
     }
