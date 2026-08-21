@@ -1,5 +1,8 @@
 import Foundation
 import Observation
+import os
+
+private let feedLog = Logger(subsystem: "com.dangahan.confluence", category: "feed")
 
 /// Fetches one page for a network given its cursor (nil = first page).
 public typealias PageFetcher = @Sendable (_ cursor: String?) async throws -> FeedPage
@@ -148,10 +151,12 @@ public final class FeedStore {
                 failedNetworks.remove(network); rateLimitedNetworks.remove(network)
                 if let cursor = page.nextCursor, !page.items.isEmpty { cursors[network] = cursor }
                 else { reachedEnd.insert(network) }
+                feedLog.notice("loadMore \(network.rawValue, privacy: .public): +\(page.items.count) items, \(page.nextCursor == nil || page.items.isEmpty ? "end" : "more", privacy: .public)")
             case .failure(let error):
                 // Transient (a timeout or blip): flag for the UI but keep the network eligible so
                 // the next scroll retries it. A one-off failure must not permanently freeze
                 // pagination — that's what left Bluesky silently stuck with no retry.
+                feedLog.error("loadMore \(network.rawValue, privacy: .public): failed — \(error.localizedDescription, privacy: .public)")
                 if isRateLimitError(error) { rateLimitedNetworks.insert(network) }
                 else { failedNetworks.insert(network) }
             }

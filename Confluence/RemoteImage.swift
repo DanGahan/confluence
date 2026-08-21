@@ -20,13 +20,46 @@ actor ImageLoader {
     static let shared = ImageLoader()
     private var inFlight: [URL: Task<PlatformImage?, Never>] = [:]
 
+    /// A dedicated session for image downloads, isolated from `URLSession.shared` which the API
+    /// clients use. The two used to share `.shared`; on a deep scroll the hundreds of
+    /// never-cancelled image downloads (kept alive to fill the cache, #42) saturated the shared
+    /// connection pool and the timeline `loadMore` request queued behind them and timed out —
+    /// dropping a whole network from the combined feed. A separate pool + a 20s request timeout
+    /// (fail fast and retry, don't hog a connection for 60s) keeps API calls responsive.
+    private static let session: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.httpMaximumConnectionsPerHost = 4
+        config.timeoutIntervalForRequest = 20
+        return URLSession(configuration: config)
+    }()
+
+    /// A global cap on concurrent image downloads. Per-host limits don't bound Mastodon (images
+    /// come from many instance hosts), so without this a deep scroll spawns hundreds of requests
+    /// that each wait past their timeout. Off-screen loads queue; visible rows still resolve.
+    private let maxConcurrent = 6
+    private var active = 0
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    private func acquire() async {
+        if active < maxConcurrent { active += 1; return }
+        await withCheckedContinuation { waiters.append($0) } // slot handed over by release()
+    }
+    private func release() {
+        if waiters.isEmpty { active -= 1 } else { waiters.removeFirst().resume() }
+    }
+
     func image(for url: URL) async -> PlatformImage? {
         if let cached = ImageCache.shared.image(for: url) { return cached }
         if let existing = inFlight[url] { return await existing.value }
 
         // Unstructured Task: not a child of the caller, so caller cancellation (scroll-off)
         // doesn't cancel the download.
-        let task = Task<PlatformImage?, Never> { await Self.download(url) }
+        let task = Task<PlatformImage?, Never> { [self] in
+            await acquire()
+            let image = await Self.download(url) // never throws — returns nil on failure
+            await release()
+            return image
+        }
         inFlight[url] = task
         let image = await task.value
         inFlight[url] = nil
@@ -37,7 +70,7 @@ actor ImageLoader {
     private static func download(_ url: URL) async -> PlatformImage? {
         for attempt in 0..<3 {
             do {
-                let (data, response) = try await URLSession.shared.data(from: url)
+                let (data, response) = try await session.data(from: url)
                 let status = (response as? HTTPURLResponse)?.statusCode ?? 0
                 // A non-2xx (e.g. 429 rate-limit during a scroll burst) returns an error-page
                 // body, not an image — must retry, not decode it to nil and give up.
