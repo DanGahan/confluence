@@ -22,7 +22,7 @@ extension BlueskyClient {
         let decoded: Timeline
         do { decoded = try JSONDecoder().decode(Timeline.self, from: data) }
         catch { throw BlueskyError.malformedResponse }
-        return FeedPage(items: decoded.feed.compactMap(\.feedItem), nextCursor: decoded.cursor)
+        return FeedPage(items: decoded.feed.compactMap { $0.value?.feedItem }, nextCursor: decoded.cursor)
     }
 
     /// `app.bsky.feed.getPostThread` — a post with its parent chain and nested replies.
@@ -72,7 +72,7 @@ extension BlueskyClient {
             throw BlueskyError.server("Bluesky author feed status \(response.statusCode).")
         }
         guard let decoded = try? JSONDecoder().decode(Timeline.self, from: data) else { throw BlueskyError.malformedResponse }
-        return FeedPage(items: decoded.feed.compactMap(\.feedItem), nextCursor: decoded.cursor)
+        return FeedPage(items: decoded.feed.compactMap { $0.value?.feedItem }, nextCursor: decoded.cursor)
     }
 
     // MARK: - Wire format (only the fields we render)
@@ -81,7 +81,9 @@ extension BlueskyClient {
 
     private struct Timeline: Decodable {
         let cursor: String?
-        let feed: [FeedEntry]
+        // Lossy: one malformed entry deep in the timeline must not fail the whole page (and lose
+        // the cursor, stalling pagination there). Skip the bad ones, keep the rest (#214).
+        let feed: [FailableDecodable<FeedEntry>]
     }
 
     private struct FeedEntry: Decodable {

@@ -40,6 +40,29 @@ struct FeedDecodingTests {
         #expect(item.followURI == "at://did:plc:me/app.bsky.graph.follow/xyz")
     }
 
+    /// #214: one malformed entry deep in the timeline must not fail the whole page (which drops the
+    /// cursor too, stalling Bluesky pagination there). Good entries survive; the cursor is kept.
+    @Test func blueskyTimelineSkipsMalformedEntriesAndKeepsCursor() async throws {
+        let json = """
+        {
+          "cursor": "next-page",
+          "feed": [
+            {"post": {
+              "uri": "at://did:plc:1/app.bsky.feed.post/good",
+              "author": {"did": "did:plc:alice", "handle": "alice.bsky.social", "displayName": "Alice"},
+              "record": {"text": "still here", "createdAt": "2026-07-01T10:00:00.000Z"}
+            }},
+            {"post": {"uri": "at://broken/no-author-or-record"}},
+            {"unexpectedShape": true}
+          ]
+        }
+        """.data(using: .utf8)!
+        let client = BlueskyClient(session: MockURLProtocol.session { ($0.status(200), json) })
+        let page = try await client.timeline(auth: .bearer("t"), cursor: nil)
+        #expect(page.nextCursor == "next-page")          // cursor preserved → pagination continues
+        #expect(page.items.map(\.text) == ["still here"]) // the good entry survived; bad ones skipped
+    }
+
     @Test func blueskyReplyCapturesThreadRootRef() async throws {
         // A reply post carries record.reply.root (the conversation root) — captured so a reply
         // *to* this post is rooted at the thread, not at this mid-thread post.
