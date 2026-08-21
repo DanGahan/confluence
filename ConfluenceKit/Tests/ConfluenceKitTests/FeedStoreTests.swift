@@ -189,6 +189,21 @@ struct FeedStoreTests {
         #expect(store.failedNetworks.isEmpty)
     }
 
+    /// Deep scroll must reach a clean end, not accumulate posts forever (which hangs the feed). At
+    /// the depth cap, pagination stops on ALL networks together. (2000 matches
+    /// FeedStore.maxLoadedItems.)
+    @Test func loadMoreStopsAtTheDepthCap() async {
+        let store = FeedStore()
+        store.setFetchers([.bluesky: { _ in
+            FeedPage(items: (0..<50).map { self.item(.bluesky, UUID().uuidString, Double($0)) }, nextCursor: "more")
+        }])
+        await store.refresh()
+        var guardCount = 0
+        while store.hasMore() && guardCount < 500 { await store.loadMore(); guardCount += 1 }
+        #expect(store.hasMore() == false)       // stopped on its own — no infinite pagination
+        #expect(store.items.count == 2000)      // bounded at the cap
+    }
+
     /// A partial refresh replaces the succeeding network's posts but keeps the failing one's.
     @Test func partialRefreshReplacesWinnerKeepsLoser() async {
         let store = FeedStore()

@@ -25,6 +25,13 @@ public final class FeedStore {
     private var reachedEnd: Set<Network> = []
     private var perNetwork: [Network: [FeedItem]] = [:]
 
+    /// Depth ceiling for infinite scroll. ponytail: every loaded post is held in memory and merged
+    /// on each page, so an unbounded deep scroll (a dense feed can page dozens of times to reach a
+    /// day back) eventually swamps the main thread and connection pool and the feed hangs. Stop
+    /// paginating at this many total items so it reaches a clean end instead. Tunable; the real
+    /// upgrade is windowing — evict off-screen pages so scroll is truly unbounded. See GAPS G17.
+    private static let maxLoadedItems = 2000
+
     public init() {}
 
     /// Active networks change when accounts are added/removed.
@@ -160,6 +167,14 @@ public final class FeedStore {
                 if isRateLimitError(error) { rateLimitedNetworks.insert(network) }
                 else { failedNetworks.insert(network) }
             }
+        }
+        // Depth ceiling: once we're holding this many posts, stop paginating ALL networks together
+        // so the combined feed reaches a clean end rather than hanging (and doesn't degrade to a
+        // single-network tail). See `maxLoadedItems`.
+        let total = perNetwork.values.reduce(0) { $0 + $1.count }
+        if total >= Self.maxLoadedItems {
+            reachedEnd.formUnion(fetchers.keys)
+            feedLog.notice("loadMore: depth cap reached (\(total, privacy: .public) items) — pagination stopped")
         }
         rebuild()
     }
