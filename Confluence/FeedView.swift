@@ -108,6 +108,9 @@ struct FeedView: View {
                 if !feed.failedNetworks.isEmpty {
                     failureBanner.padding(.horizontal).padding(.top, 8)
                 }
+                if bluesky.sessionExpired {
+                    reauthBanner.padding(.horizontal).padding(.top, 8)
+                }
                 ForEach(visibleItems) { item in
                     FeedRow(item: item)
                         .padding(.horizontal)
@@ -448,6 +451,22 @@ struct FeedView: View {
             .font(.caption)
             .foregroundStyle(.secondary)
             .listRowSeparator(.hidden)
+    }
+
+    /// Shown when the Bluesky OAuth session died (dead refresh token). Unlike a transient failure,
+    /// this needs a browser re-auth — there's no stored secret to renew from — so offer a one-tap
+    /// sign-in rather than dropping Bluesky silently (#217).
+    private var reauthBanner: some View {
+        HStack {
+            Label("Your Bluesky sign-in expired.", systemImage: "person.crop.circle.badge.exclamationmark")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Spacer()
+            Button("Sign in again") { showingBlueskyLogin = true }
+                .font(.caption.weight(.semibold))
+                .buttonStyle(.borderless)
+        }
+        .listRowSeparator(.hidden)
     }
 
     private var rateLimitBanner: some View {

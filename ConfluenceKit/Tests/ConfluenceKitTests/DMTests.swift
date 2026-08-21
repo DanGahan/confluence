@@ -93,9 +93,23 @@ struct BlueskyChatTests {
         #expect(url.absoluteString == "https://puffball.us-east.host.bsky.network")
     }
 
-    @Test func chat403SurfacesAsInvalidCredentials() async {
+    /// A chat 403 (scope/permission) must NOT surface as invalidCredentials — that makes withAuth
+    /// refresh + retry on every DM poll, churning the single-use OAuth refresh token (#217). It's a
+    /// distinct, non-refreshing failure.
+    @Test func chat403SurfacesAsChatUnavailableNotInvalidCredentials() async {
         let client = BlueskyClient(session: MockURLProtocol.session { request in
-            (request.status(403), #"{"error":"AccessDenied"}"#.data(using: .utf8)!)
+            (request.status(403), #"{"error":"ScopeMissingError"}"#.data(using: .utf8)!)
+        })
+        await #expect(throws: BlueskyError.chatUnavailable) {
+            _ = try await client.listConvos(auth: .bearer("tok"), selfDID: "did:me")
+        }
+    }
+
+    /// A genuine expired token (401 / ExpiredToken) still surfaces as invalidCredentials so
+    /// withAuth refreshes once and retries.
+    @Test func chatExpiredTokenSurfacesAsInvalidCredentials() async {
+        let client = BlueskyClient(session: MockURLProtocol.session { request in
+            (request.status(401), #"{"error":"ExpiredToken"}"#.data(using: .utf8)!)
         })
         await #expect(throws: BlueskyError.invalidCredentials) {
             _ = try await client.listConvos(auth: .bearer("tok"), selfDID: "did:me")

@@ -1,5 +1,8 @@
 import Foundation
 import Observation
+import os
+
+private let authLog = Logger(subsystem: "com.dangahan.confluence", category: "bluesky-auth")
 
 /// Owns Bluesky auth state for the UI: log in, restore on launch, refresh, log out.
 /// The session is persisted in the Keychain and nowhere else.
@@ -10,10 +13,17 @@ public final class BlueskyAccountStore {
     /// An OAuth session, if the user signed in via ATProto OAuth (#105). Stored separately from the
     /// app-password `session`; slice 3 routes calls through DPoP when this is present.
     public private(set) var oauthSession: ATProtoOAuthSession?
+    /// True when an OAuth refresh hit `invalid_grant` — the refresh token is dead and, unlike an
+    /// app password, there's no stored secret to renew from, so a fresh browser sign-in is needed.
+    /// The UI shows a re-auth prompt on this rather than dropping Bluesky silently (#217). Cleared
+    /// on the next successful sign-in.
+    public private(set) var sessionExpired = false
 
     private let client: BlueskyClient
     private let keychain: any SecureStore
     private let authenticator: (any WebAuthenticator)?
+    private let oauthURLSession: URLSession
+    private var inFlightRefresh: Task<Void, Error>?
     private static let account = "session"
     private static let oauthAccount = "oauth-session"
 
@@ -35,11 +45,13 @@ public final class BlueskyAccountStore {
     public init(
         client: BlueskyClient = BlueskyClient(),
         keychain: any SecureStore = Keychain(service: "com.dangahan.confluence.bluesky"),
-        authenticator: (any WebAuthenticator)? = nil
+        authenticator: (any WebAuthenticator)? = nil,
+        oauthURLSession: URLSession = .shared
     ) {
         self.client = client
         self.keychain = keychain
         self.authenticator = authenticator
+        self.oauthURLSession = oauthURLSession
     }
 
     /// Restores a persisted session (if any) from the Keychain.
@@ -69,6 +81,7 @@ public final class BlueskyAccountStore {
         let oauth = try await flow.complete(request, callbackURL: callbackURL, handle: handle)
         try keychain.set(oauth, for: Self.oauthAccount)
         oauthSession = oauth
+        sessionExpired = false
     }
 
     public func logIn(identifier: String, appPassword: String) async throws {
@@ -77,6 +90,7 @@ public final class BlueskyAccountStore {
         let newSession = try await client.createSession(identifier: handle, appPassword: appPassword)
         try keychain.set(newSession, for: Self.account)
         session = newSession
+        sessionExpired = false
     }
 
     /// Exchanges the stored refresh token for fresh tokens.
@@ -91,6 +105,7 @@ public final class BlueskyAccountStore {
         try keychain.deleteAll()
         session = nil
         oauthSession = nil
+        sessionExpired = false
     }
 
     /// Runs `body` with the current session; if the access token has expired
@@ -105,7 +120,7 @@ public final class BlueskyAccountStore {
         do {
             return try await body(session)
         } catch BlueskyError.invalidCredentials {
-            try await refresh()
+            try await coalescedRefresh()
             guard let fresh = await self.session else { throw BlueskyError.invalidCredentials }
             return try await body(fresh)
         }
@@ -122,7 +137,7 @@ public final class BlueskyAccountStore {
             do {
                 return try await body(.dpop(accessToken: oauth.accessToken, key: try oauth.dpopKey()), oauth.did)
             } catch BlueskyError.invalidCredentials {
-                try await refreshOAuth()
+                try await coalescedRefresh()
                 guard let fresh = await oauthSession else { throw BlueskyError.invalidCredentials }
                 return try await body(.dpop(accessToken: fresh.accessToken, key: try fresh.dpopKey()), fresh.did)
             }
@@ -131,7 +146,7 @@ public final class BlueskyAccountStore {
         do {
             return try await body(.bearer(session.accessJwt), session.did)
         } catch BlueskyError.invalidCredentials {
-            try await refresh()
+            try await coalescedRefresh()
             guard let fresh = await self.session else { throw BlueskyError.invalidCredentials }
             return try await body(.bearer(fresh.accessJwt), fresh.did)
         }
@@ -140,9 +155,28 @@ public final class BlueskyAccountStore {
     /// Refreshes an OAuth access token via the DPoP-signed refresh grant, rotating stored tokens.
     public func refreshOAuth() async throws {
         guard let oauth = oauthSession else { throw BlueskyError.invalidCredentials }
-        let tokens = try await ATProtoOAuthService().refresh(
-            tokenEndpoint: oauth.tokenEndpoint, refreshToken: oauth.refreshToken,
-            dpop: DPoPProofBuilder(key: try oauth.dpopKey()))
+        let tokens: ATProtoTokens
+        do {
+            authLog.notice("OAuth refresh: attempting")
+            tokens = try await ATProtoOAuthService(session: oauthURLSession).refresh(
+                tokenEndpoint: oauth.tokenEndpoint, refreshToken: oauth.refreshToken,
+                dpop: DPoPProofBuilder(key: try oauth.dpopKey()))
+        } catch let ATProtoOAuthError.server(_, error, _) where error == "invalid_grant" {
+            // The refresh token is permanently dead — rotated away by a prior refresh, or that
+            // refresh's response was lost to a timeout (the server rotated, we never got the new
+            // token). It can't be recovered, so clear the session and flag it so the UI prompts a
+            // fresh sign-in instead of dropping Bluesky silently / looping on "couldn't refresh" (#217).
+            authLog.error("OAuth refresh: invalid_grant — refresh token dead, clearing session for re-auth")
+            try? keychain.delete(Self.oauthAccount)
+            oauthSession = nil
+            sessionExpired = true
+            throw BlueskyError.invalidCredentials
+        } catch {
+            // Network/timeout etc. — recoverable, the stored token is untouched. Log so a burst of
+            // these is visible when diagnosing how often refresh actually runs.
+            authLog.error("OAuth refresh: failed (recoverable): \(error.localizedDescription, privacy: .public)")
+            throw error
+        }
         let updated = ATProtoOAuthSession(
             did: oauth.did, handle: oauth.handle,
             accessToken: tokens.accessToken, refreshToken: tokens.refreshToken,
@@ -150,6 +184,25 @@ public final class BlueskyAccountStore {
             authorizationServer: oauth.authorizationServer, tokenEndpoint: oauth.tokenEndpoint)
         try keychain.set(updated, for: Self.oauthAccount)
         oauthSession = updated
+        authLog.notice("OAuth refresh: succeeded — tokens rotated")
+    }
+
+    /// Refreshes the active session (OAuth or app-password), coalescing concurrent callers so a
+    /// burst of 401s on token expiry triggers exactly one refresh (#217). ATProto rotates the
+    /// refresh token on use, so a second concurrent refresh with the same token fails; without
+    /// coalescing that surfaced as an intermittent "couldn't refresh" with no posts on launch.
+    /// The check-and-set is on the main actor with no `await` between, so it can't interleave.
+    func coalescedRefresh() async throws {
+        if let inFlightRefresh {
+            try await inFlightRefresh.value
+            return
+        }
+        let task = Task<Void, Error> { [self] in
+            if oauthSession != nil { try await refreshOAuth() } else { try await refresh() }
+        }
+        inFlightRefresh = task
+        defer { inFlightRefresh = nil }
+        try await task.value
     }
 
     /// True when the active session is OAuth (DPoP) rather than an app password. Lets wiring that
