@@ -41,7 +41,6 @@ public final class FeedStore {
         guard !isLoading else { return }
         isLoading = true
         defer { isLoading = false }
-        cursors = [:]; reachedEnd = []; perNetwork = [:]; failedNetworks = []; rateLimitedNetworks = []
 
         let active = Array(fetchers)
         let results = await withTaskGroup(of: (Network, Result<FeedPage, Error>).self) { group in
@@ -55,7 +54,29 @@ public final class FeedStore {
             for await result in group { acc.append(result) }
             return acc
         }
-        for (network, result) in results { apply(result, for: network, append: false) }
+        for (network, result) in results {
+            switch result {
+            case .success(let page):
+                // Fresh top-of-feed for this network: replace its items and reset its pagination.
+                perNetwork[network] = page.items
+                reachedEnd.remove(network); failedNetworks.remove(network); rateLimitedNetworks.remove(network)
+                if let cursor = page.nextCursor, !page.items.isEmpty { cursors[network] = cursor }
+                else { cursors[network] = nil; reachedEnd.insert(network) }
+            case .failure(let error):
+                // Don't blank a feed that was showing fine: keep this network's existing items and
+                // pagination on a failed refresh (e.g. a 429 from deep scrolling). Just flag it so
+                // the UI can surface the failure and the user can retry — no forced app restart.
+                if isRateLimitError(error) { rateLimitedNetworks.insert(network) }
+                else { failedNetworks.insert(network) }
+            }
+        }
+        // Forget any network that's no longer active (account removed) so it doesn't linger.
+        let activeKeys = Set(fetchers.keys)
+        perNetwork = perNetwork.filter { activeKeys.contains($0.key) }
+        cursors = cursors.filter { activeKeys.contains($0.key) }
+        reachedEnd.formIntersection(activeKeys)
+        failedNetworks.formIntersection(activeKeys)
+        rateLimitedNetworks.formIntersection(activeKeys)
         rebuild()
     }
 

@@ -93,4 +93,47 @@ struct FeedStoreTests {
         await store.refresh()
         #expect(store.items.count == 1)
     }
+
+    /// A refresh whose fetches all fail must NOT blank a feed that was showing posts — otherwise a
+    /// transient failure (e.g. 429 from deep scrolling) leaves an empty feed + error and forces an
+    /// app restart to recover. The previously loaded posts are kept; the failure is flagged.
+    @Test func failedRefreshKeepsPreviouslyLoadedPosts() async {
+        let store = FeedStore()
+        store.setFetchers([
+            .bluesky: { _ in FeedPage(items: [self.item(.bluesky, "b1", 10)], nextCursor: "bc") },
+            .mastodon: { _ in FeedPage(items: [self.item(.mastodon, "m1", 5)], nextCursor: "mc") },
+        ])
+        await store.refresh()
+        #expect(store.items.count == 2)
+
+        // Both networks now fail (rate-limited Bluesky, network blip Mastodon).
+        store.setFetchers([
+            .bluesky: { _ in throw BlueskyError.rateLimited },
+            .mastodon: { _ in throw MastodonError.network },
+        ])
+        await store.refresh()
+        #expect(store.items.count == 2)                    // feed NOT blanked
+        #expect(store.rateLimitedNetworks == [.bluesky])
+        #expect(store.failedNetworks == [.mastodon])
+    }
+
+    /// A partial refresh replaces the succeeding network's posts but keeps the failing one's.
+    @Test func partialRefreshReplacesWinnerKeepsLoser() async {
+        let store = FeedStore()
+        store.setFetchers([
+            .bluesky: { _ in FeedPage(items: [self.item(.bluesky, "b1", 10)], nextCursor: nil) },
+            .mastodon: { _ in FeedPage(items: [self.item(.mastodon, "m1", 5)], nextCursor: nil) },
+        ])
+        await store.refresh()
+
+        store.setFetchers([
+            .bluesky: { _ in FeedPage(items: [self.item(.bluesky, "b2", 1)], nextCursor: nil) }, // fresh
+            .mastodon: { _ in throw MastodonError.network },                                     // fails
+        ])
+        await store.refresh()
+        #expect(store.items.contains { $0.id == "bluesky:b2" })  // refreshed network updated
+        #expect(store.items.contains { $0.id == "mastodon:m1" }) // failed network preserved
+        #expect(store.items.contains { $0.id == "bluesky:b1" } == false)
+        #expect(store.failedNetworks == [.mastodon])
+    }
 }
