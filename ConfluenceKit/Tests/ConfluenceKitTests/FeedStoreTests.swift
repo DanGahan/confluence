@@ -117,6 +117,48 @@ struct FeedStoreTests {
         #expect(store.failedNetworks == [.mastodon])
     }
 
+    /// Combined loadMore must advance BOTH networks so older posts from either actually reach the
+    /// visible bottom — extending only one stranded the other's older posts in the merge middle,
+    /// so the feed looked frozen until you switched to that network's filter and back.
+    @Test func combinedLoadMoreAdvancesEveryNetwork() async {
+        let store = FeedStore()
+        let bPages = Box(0), mPages = Box(0)
+        store.setFetchers([
+            .bluesky: { cursor in
+                if cursor != nil { bPages.value += 1 }
+                return FeedPage(items: [self.item(.bluesky, "b\(bPages.value)", 10)], nextCursor: "bc\(bPages.value)")
+            },
+            .mastodon: { cursor in
+                if cursor != nil { mPages.value += 1 }
+                return FeedPage(items: [self.item(.mastodon, "m\(mPages.value)", 5)], nextCursor: "mc\(mPages.value)")
+            },
+        ])
+        await store.refresh()
+        await store.loadMore() // combined
+        #expect(bPages.value == 1) // both networks paginated, not just one
+        #expect(mPages.value == 1)
+    }
+
+    /// A transient loadMore failure (timeout) must be retryable — the network stays eligible, so the
+    /// next scroll tries again, rather than being permanently stuck until a full refresh.
+    @Test func loadMoreFailureIsRetryable() async {
+        let store = FeedStore()
+        let fail = Box(true)
+        store.setFetchers([.bluesky: { cursor in
+            if cursor == nil { return FeedPage(items: [self.item(.bluesky, "b1", 1)], nextCursor: "c1") }
+            if fail.value { throw BlueskyError.network }
+            return FeedPage(items: [self.item(.bluesky, "b2", 2)], nextCursor: nil)
+        }])
+        await store.refresh()
+        await store.loadMore()                       // fails
+        #expect(store.failedNetworks == [.bluesky])
+        #expect(store.hasMore())                      // NOT marked ended — still retryable
+        fail.value = false
+        await store.loadMore()                       // retry succeeds
+        #expect(store.items.contains { $0.id == "bluesky:b2" })
+        #expect(store.failedNetworks.isEmpty)
+    }
+
     /// A partial refresh replaces the succeeding network's posts but keeps the failing one's.
     @Test func partialRefreshReplacesWinnerKeepsLoser() async {
         let store = FeedStore()

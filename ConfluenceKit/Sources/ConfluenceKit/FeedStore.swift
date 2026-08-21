@@ -80,43 +80,50 @@ public final class FeedStore {
         rebuild()
     }
 
-    /// `filter` = the network currently shown (nil = combined). When set, paginate *that* network
-    /// so the visible list actually grows instead of silently fetching the hidden one (#214).
+    /// `filter` = the network currently shown (nil = combined). Filtered: paginate just that
+    /// network (#214). Combined: advance EVERY network that still has pages, in parallel — extending
+    /// only one leaves the other's older posts stranded in the middle of the merge (they'd never
+    /// reach the visible bottom), which reads as "the feed won't load more" until you switch filters.
     public func loadMore(preferring filter: Network? = nil) async {
         guard !isLoading, hasMore(for: filter) else { return }
-        let candidates = fetchers.keys.filter { !reachedEnd.contains($0) && !failedNetworks.contains($0) }
-        let network: Network?
-        if let filter, candidates.contains(filter) {
-            network = filter
+        let targets: [Network]
+        if let filter {
+            targets = (fetchers.keys.contains(filter) && !reachedEnd.contains(filter)) ? [filter] : []
         } else {
-            // Combined: extend whichever loaded stream ends newest — that's the merge gap.
-            network = candidates.max(by: {
-                (perNetwork[$0]?.last?.createdAt ?? .distantPast) < (perNetwork[$1]?.last?.createdAt ?? .distantPast)
-            })
+            targets = fetchers.keys.filter { !reachedEnd.contains($0) }
         }
-        guard let network, let fetcher = fetchers[network] else { return }
+        guard !targets.isEmpty else { return }
 
         isLoading = true
         defer { isLoading = false }
-        do { apply(.success(try await fetcher(cursors[network])), for: network, append: true) }
-        catch { apply(.failure(error), for: network, append: true) }
-        rebuild()
-    }
-
-    private func apply(_ result: Result<FeedPage, Error>, for network: Network, append: Bool) {
-        switch result {
-        case .success(let page):
-            if append { perNetwork[network, default: []].append(contentsOf: page.items) }
-            else { perNetwork[network] = page.items }
-            if let cursor = page.nextCursor, !page.items.isEmpty { cursors[network] = cursor }
-            else { reachedEnd.insert(network) }
-            failedNetworks.remove(network)
-            rateLimitedNetworks.remove(network)
-        case .failure(let error):
-            if isRateLimitError(error) { rateLimitedNetworks.insert(network) }
-            else { failedNetworks.insert(network) }
-            reachedEnd.insert(network) // stop paginating a failed network until next refresh
+        let results = await withTaskGroup(of: (Network, Result<FeedPage, Error>).self) { group in
+            for network in targets {
+                let fetcher = fetchers[network]!, cursor = cursors[network]
+                group.addTask {
+                    do { return (network, .success(try await fetcher(cursor))) }
+                    catch { return (network, .failure(error)) }
+                }
+            }
+            var acc: [(Network, Result<FeedPage, Error>)] = []
+            for await result in group { acc.append(result) }
+            return acc
         }
+        for (network, result) in results {
+            switch result {
+            case .success(let page):
+                perNetwork[network, default: []].append(contentsOf: page.items)
+                failedNetworks.remove(network); rateLimitedNetworks.remove(network)
+                if let cursor = page.nextCursor, !page.items.isEmpty { cursors[network] = cursor }
+                else { reachedEnd.insert(network) }
+            case .failure(let error):
+                // Transient (a timeout or blip): flag for the UI but keep the network eligible so
+                // the next scroll retries it. A one-off failure must not permanently freeze
+                // pagination — that's what left Bluesky silently stuck with no retry.
+                if isRateLimitError(error) { rateLimitedNetworks.insert(network) }
+                else { failedNetworks.insert(network) }
+            }
+        }
+        rebuild()
     }
 
     private func rebuild() {
