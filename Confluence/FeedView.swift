@@ -581,7 +581,7 @@ struct FeedRow: View {
                         #endif
                 }
                 if !item.imageURLs.isEmpty {
-                    PostImages(urls: item.imageURLs, letterboxHeight: 140) { start, images in
+                    PostImages(urls: item.imageURLs, aspects: item.imageAspects, letterboxHeight: 140) { start, images in
                         lightbox = LightboxItem(urls: images, start: start)
                     }
                 }

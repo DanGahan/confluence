@@ -72,6 +72,10 @@ public struct FeedItem: Identifiable, Sendable, Equatable {
     /// Rich version of `text` with `.link` runs for URLs and @-mentions. Defaults to plain text.
     public let attributedText: AttributedString
     public let imageURLs: [URL]
+    /// Aspect ratio (width/height) for each image in `imageURLs`, when the API provides it — used
+    /// to reserve the image's space before it loads so image-heavy rows don't grow and shift the
+    /// scroll (#196). 0 = unknown. Aligned 1:1 with `imageURLs`.
+    public let imageAspects: [Double]
     /// Videos/GIFs attached to the post (Bluesky video embed, Mastodon video/gifv).
     public let videos: [PostVideo]
     /// A shared-link preview card, when the post embeds one and has no images.
@@ -107,7 +111,7 @@ public struct FeedItem: Identifiable, Sendable, Equatable {
 
     public init(network: Network, rawId: String, authorID: String = "", authorName: String, authorHandle: String,
                 avatarURL: URL?, createdAt: Date, text: String, attributedText: AttributedString? = nil,
-                imageURLs: [URL] = [], videos: [PostVideo] = [], linkCard: LinkCard? = nil, repostedBy: String? = nil,
+                imageURLs: [URL] = [], imageAspects: [Double] = [], videos: [PostVideo] = [], linkCard: LinkCard? = nil, repostedBy: String? = nil,
                 isFollowing: Bool = false, followURI: String? = nil,
                 threadID: String? = nil, replyCount: Int = 0, isReply: Bool = false,
                 cid: String? = nil, replyRoot: PostRef? = nil, postURL: URL? = nil,
@@ -122,6 +126,7 @@ public struct FeedItem: Identifiable, Sendable, Equatable {
         self.text = text
         self.attributedText = attributedText ?? AttributedString(text)
         self.imageURLs = imageURLs
+        self.imageAspects = imageAspects
         self.videos = videos
         self.linkCard = linkCard
         self.repostedBy = repostedBy

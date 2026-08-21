@@ -5,6 +5,9 @@ import SwiftUI
 /// column and capped in height so the whole image is visible without dominating.
 struct PostImages: View {
     let urls: [URL]
+    /// Per-image aspect ratio (width/height); 0 = unknown. Reserves the image's space before it
+    /// loads so image-heavy rows don't grow and shift the scroll (#196). Aligned with `urls`.
+    var aspects: [Double] = []
     /// Letterbox height when full-size is off (feed 140, thread/profile 120).
     var letterboxHeight: CGFloat = 140
     /// Tapping an image opens the lightbox; nil = not tappable (e.g. thread view).
@@ -18,9 +21,7 @@ struct PostImages: View {
             VStack(spacing: 6) {
                 ForEach(Array(images.enumerated()), id: \.element) { i, url in
                     tappable(i, images) {
-                        RemoteImage(url, contentMode: .fit) { Color.secondary.opacity(0.15) }
-                            .frame(maxWidth: .infinity, maxHeight: MediaPreference.fullSizeMaxHeight)
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                        fullSizeImage(url, aspect: i < aspects.count ? aspects[i] : 0)
                     }
                 }
             }
@@ -36,6 +37,23 @@ struct PostImages: View {
                     }
                 }
             }
+        }
+    }
+
+    /// A full-size image that reserves its height up front from the known aspect ratio, so the row
+    /// doesn't grow when the image loads (which shifts the scroll — #196). Unknown aspect falls
+    /// back to the loosely-capped frame.
+    @ViewBuilder private func fullSizeImage(_ url: URL, aspect: Double) -> some View {
+        if aspect > 0 {
+            Color.clear
+                .aspectRatio(aspect, contentMode: .fit)
+                .frame(maxWidth: .infinity, maxHeight: MediaPreference.fullSizeMaxHeight)
+                .overlay { RemoteImage(url, contentMode: .fit) { Color.secondary.opacity(0.15) } }
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+        } else {
+            RemoteImage(url, contentMode: .fit) { Color.secondary.opacity(0.15) }
+                .frame(maxWidth: .infinity, maxHeight: MediaPreference.fullSizeMaxHeight)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
         }
     }
 

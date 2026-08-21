@@ -184,6 +184,7 @@ extension MastodonClient {
 
         private func feedItem(host: String, boostedBy: String?, boostId: String?, orderCreatedAt: String) -> FeedItem? {
             guard let date = ISO8601.date(from: orderCreatedAt) else { return nil }
+            let imgs = mediaAttachments.filter { $0.type == "image" }.compactMap { m in URL(string: m.url).map { ($0, m.aspect) } }
             return FeedItem(
                 network: .mastodon,
                 rawId: boostId ?? id,
@@ -194,7 +195,8 @@ extension MastodonClient {
                 createdAt: date,
                 text: htmlToPlainText(content),
                 attributedText: autolinked(mastodonRichText(html: content, mentions: mentionLinks)),
-                imageURLs: mediaAttachments.filter { $0.type == "image" }.compactMap { URL(string: $0.url) },
+                imageURLs: imgs.map(\.0),
+                imageAspects: imgs.map(\.1),
                 videos: mediaAttachments.compactMap(\.postVideo),
                 // Show the link-preview card only when the post has no media of its own
                 // (mirrors the Bluesky rule that images/video win over a card).
@@ -223,7 +225,20 @@ extension MastodonClient {
         let type: String
         let url: String
         let previewUrl: String?
-        enum CodingKeys: String, CodingKey { case type, url; case previewUrl = "preview_url" }
+        let meta: Meta?
+        enum CodingKeys: String, CodingKey { case type, url, meta; case previewUrl = "preview_url" }
+        /// Aspect ratio (width/height) from the attachment metadata; 0 if absent.
+        var aspect: Double { meta?.aspect ?? 0 }
+
+        struct Meta: Decodable {
+            let original: Original?
+            var aspect: Double {
+                if let a = original?.aspect { return a }
+                if let w = original?.width, let h = original?.height, h > 0 { return Double(w) / Double(h) }
+                return 0
+            }
+        }
+        struct Original: Decodable { let width: Int?; let height: Int?; let aspect: Double? }
 
         /// A playable video/gifv attachment, if this is one and the URL parses.
         var postVideo: PostVideo? {
