@@ -69,16 +69,18 @@ struct FeedView: View {
         }
     }
 
-    /// Feed items after applying the network filter (client-side over the merged list).
-    /// Filtering only applies when both networks are connected; otherwise there's one network.
+    /// Feed items after applying the network filter (client-side over the merged list). The
+    /// combined view uses `combinedVisible` — the merge trimmed to the region both networks cover —
+    /// so posts stay in true order with none missing (#214). A single-network filter shows that
+    /// whole network directly.
     private var visibleItems: [FeedItem] {
-        let live = feed.items.filter { !postActions.isDeleted($0) }
-        guard bothConnected else { return live }
-        switch networkFilter {
-        case .both: return live
-        case .bluesky: return live.filter { $0.network == .bluesky }
-        case .mastodon: return live.filter { $0.network == .mastodon }
+        let base: [FeedItem]
+        switch (bothConnected, networkFilter) {
+        case (true, .bluesky): base = feed.items.filter { $0.network == .bluesky }
+        case (true, .mastodon): base = feed.items.filter { $0.network == .mastodon }
+        default:               base = feed.combinedVisible // .both, or a single connected network
         }
+        return base.filter { !postActions.isDeleted($0) }
     }
 
     private var filterHelp: String {

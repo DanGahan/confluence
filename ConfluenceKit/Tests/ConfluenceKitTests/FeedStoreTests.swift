@@ -117,26 +117,56 @@ struct FeedStoreTests {
         #expect(store.failedNetworks == [.mastodon])
     }
 
-    /// Combined loadMore must advance BOTH networks so older posts from either actually reach the
-    /// visible bottom — extending only one stranded the other's older posts in the merge middle,
-    /// so the feed looked frozen until you switched to that network's filter and back.
-    @Test func combinedLoadMoreAdvancesEveryNetwork() async {
+    /// The combined feed must never show posts older than the shallowest still-loading network's
+    /// oldest post — below that point the merge is incomplete (a later page could interleave), so
+    /// those posts are held back. `items` still holds everything (single-network views use it).
+    @Test func combinedVisibleHidesTheIncompleteTail() async {
+        let store = FeedStore()
+        store.setFetchers([
+            // Bluesky shallow: oldest is 30s ago.
+            .bluesky: { _ in FeedPage(items: [self.item(.bluesky, "b1", 10), self.item(.bluesky, "b2", 30)], nextCursor: "bc") },
+            // Mastodon deep: reaches 50s ago.
+            .mastodon: { _ in FeedPage(items: [self.item(.mastodon, "m1", 20), self.item(.mastodon, "m2", 50)], nextCursor: "mc") },
+        ])
+        await store.refresh()
+        // Watermark = bluesky's oldest (30s). m2 (50s) is below it → hidden from the combined view.
+        #expect(Set(store.combinedVisible.map(\.id)) == ["bluesky:b1", "bluesky:b2", "mastodon:m1"])
+        #expect(store.items.count == 4) // nothing lost; filtered views still see it all
+    }
+
+    /// Once the shallow network ends, it no longer constrains completeness — the deeper network's
+    /// tail is revealed (there's genuinely nothing more from the ended one to interleave).
+    @Test func combinedVisibleRevealsTailWhenShallowNetworkEnds() async {
+        let store = FeedStore()
+        store.setFetchers([
+            .bluesky: { _ in FeedPage(items: [self.item(.bluesky, "b1", 10), self.item(.bluesky, "b2", 30)], nextCursor: nil) }, // ended
+            .mastodon: { _ in FeedPage(items: [self.item(.mastodon, "m1", 20), self.item(.mastodon, "m2", 50)], nextCursor: "mc") },
+        ])
+        await store.refresh()
+        #expect(store.combinedVisible.contains { $0.id == "mastodon:m2" }) // deep tail now shown
+    }
+
+    /// Combined loadMore pages the SHALLOWEST stream (the one holding up the watermark) to catch it
+    /// up — not the already-deeper one — so the complete region actually descends. This is the
+    /// "make extra calls to the network that's behind" behaviour.
+    @Test func combinedLoadMorePagesTheShallowNetwork() async {
         let store = FeedStore()
         let bPages = Box(0), mPages = Box(0)
         store.setFetchers([
+            // Bluesky shallow (recent), Mastodon deep (old) after the first page.
             .bluesky: { cursor in
                 if cursor != nil { bPages.value += 1 }
-                return FeedPage(items: [self.item(.bluesky, "b\(bPages.value)", 10)], nextCursor: "bc\(bPages.value)")
+                return FeedPage(items: [self.item(.bluesky, "b\(bPages.value)", Double(10 + bPages.value))], nextCursor: "bc")
             },
             .mastodon: { cursor in
                 if cursor != nil { mPages.value += 1 }
-                return FeedPage(items: [self.item(.mastodon, "m\(mPages.value)", 5)], nextCursor: "mc\(mPages.value)")
+                return FeedPage(items: [self.item(.mastodon, "m\(mPages.value)", Double(500 + mPages.value * 100))], nextCursor: "mc")
             },
         ])
         await store.refresh()
         await store.loadMore() // combined
-        #expect(bPages.value == 1) // both networks paginated, not just one
-        #expect(mPages.value == 1)
+        #expect(bPages.value == 1) // shallow Bluesky caught up
+        #expect(mPages.value == 0) // deep Mastodon NOT paged unnecessarily
     }
 
     /// A transient loadMore failure (timeout) must be retryable — the network stays eligible, so the

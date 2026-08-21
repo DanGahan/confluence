@@ -37,6 +37,31 @@ public final class FeedStore {
         return fetchers.keys.contains { !reachedEnd.contains($0) }
     }
 
+    /// Oldest (earliest) loaded post for a network, or nil if none loaded.
+    private func oldestLoaded(_ network: Network) -> Date? {
+        perNetwork[network]?.map(\.createdAt).min()
+    }
+
+    /// The timestamp above which the combined feed is provably complete: the *newest* of the
+    /// oldest-loaded posts across networks that still have pages (and haven't failed). Below it,
+    /// the shallowest stream hasn't been fetched yet, so a later page could interleave posts —
+    /// hence `combinedVisible` hides that region and `loadMore` pages that stream to catch up.
+    /// nil when nothing constrains completeness (all networks ended) → show everything.
+    private var completenessWatermark: Date? {
+        fetchers.keys
+            .filter { !reachedEnd.contains($0) && !failedNetworks.contains($0) }
+            .compactMap { oldestLoaded($0) }
+            .max()
+    }
+
+    /// The combined feed trimmed to the complete region (see `completenessWatermark`), so posts
+    /// from both networks always appear in true post order with nothing missing that an un-fetched
+    /// page would slot into the middle. Single-network (filtered) views use `items` directly.
+    public var combinedVisible: [FeedItem] {
+        guard let watermark = completenessWatermark else { return items }
+        return items.filter { $0.createdAt >= watermark }
+    }
+
     public func refresh() async {
         guard !isLoading else { return }
         isLoading = true
@@ -81,16 +106,24 @@ public final class FeedStore {
     }
 
     /// `filter` = the network currently shown (nil = combined). Filtered: paginate just that
-    /// network (#214). Combined: advance EVERY network that still has pages, in parallel — extending
-    /// only one leaves the other's older posts stranded in the middle of the merge (they'd never
-    /// reach the visible bottom), which reads as "the feed won't load more" until you switch filters.
+    /// network (#214). Combined: page the network(s) holding up the completeness watermark — the
+    /// shallowest still-loading stream — so older posts from BOTH networks descend into the visible
+    /// feed in true post order. Paging the already-deeper stream would just pile up hidden posts;
+    /// catching up the shallow one (extra calls to whichever is behind) is what fixes the "past a
+    /// point it's all one network" bug. Failed streams are retried (a timeout must not freeze it).
     public func loadMore(preferring filter: Network? = nil) async {
         guard !isLoading, hasMore(for: filter) else { return }
         let targets: [Network]
         if let filter {
             targets = (fetchers.keys.contains(filter) && !reachedEnd.contains(filter)) ? [filter] : []
         } else {
-            targets = fetchers.keys.filter { !reachedEnd.contains($0) }
+            let active = fetchers.keys.filter { !reachedEnd.contains($0) }
+            let watermark = completenessWatermark
+            targets = active.filter { network in
+                if failedNetworks.contains(network) { return true }          // retry a failed stream
+                guard let oldest = oldestLoaded(network), let watermark else { return true } // (re)load empty
+                return oldest >= watermark                                   // shallowest → holds the watermark
+            }
         }
         guard !targets.isEmpty else { return }
 
