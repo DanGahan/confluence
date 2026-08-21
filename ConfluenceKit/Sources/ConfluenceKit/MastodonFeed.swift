@@ -69,6 +69,12 @@ extension MastodonClient {
         return PostThread(items: chronological(all), focusID: focusID)
     }
 
+    /// Fetches a single status and returns a reply-context preview (parent author + plain-text
+    /// body) — used to fill in the content the home timeline omits for a reply's parent (#212).
+    public func statusPreview(host: String, accessToken: String, id: String) async throws -> ReplyRef {
+        try await fetchStatus(host: host, accessToken: accessToken, statusID: id).replyPreview(host: host)
+    }
+
     private func fetchStatus(host: String, accessToken: String, statusID: String) async throws -> Status {
         let data = try await getJSON(host: host, accessToken: accessToken, path: "/api/v1/statuses/\(statusID)")
         guard let status = try? JSONDecoder().decode(Status.self, from: data) else { throw MastodonError.malformedResponse }
@@ -126,6 +132,7 @@ extension MastodonClient {
         let reblog: Box?
         let repliesCount: Int?
         let inReplyToId: String?
+        let inReplyToAccountId: String?
         let url: String?
         let card: Card?
 
@@ -135,6 +142,23 @@ extension MastodonClient {
             case mediaAttachments = "media_attachments"
             case repliesCount = "replies_count"
             case inReplyToId = "in_reply_to_id"
+            case inReplyToAccountId = "in_reply_to_account_id"
+        }
+
+        /// Reply-context card data. The home timeline doesn't carry the parent's body, so `snippet`
+        /// is empty — the parent's author (from `mentions`) + a tap-to-open-thread is what we show
+        /// until the card fills in the body via `statusPreview`.
+        var replyRef: ReplyRef? {
+            guard let parentID = inReplyToId else { return nil }
+            let handle = (mentions ?? []).first { $0.id == inReplyToAccountId }?.acct ?? ""
+            return ReplyRef(authorName: handle, authorHandle: handle, snippet: "", threadID: parentID)
+        }
+
+        /// Full reply preview for a fetched status — author + plain-text body.
+        func replyPreview(host: String) -> ReplyRef {
+            ReplyRef(authorName: account.displayName.isEmpty ? account.acct : account.displayName,
+                     authorHandle: account.acct.contains("@") ? account.acct : "\(account.acct)@\(host)",
+                     snippet: htmlToPlainText(content), threadID: id)
         }
 
         /// Maps an <a> href (a mention's account URL) to its in-app profile link.
@@ -160,6 +184,7 @@ extension MastodonClient {
 
         private func feedItem(host: String, boostedBy: String?, boostId: String?, orderCreatedAt: String) -> FeedItem? {
             guard let date = ISO8601.date(from: orderCreatedAt) else { return nil }
+            let imgs = mediaAttachments.filter { $0.type == "image" }.compactMap { m in URL(string: m.url).map { ($0, m.aspect) } }
             return FeedItem(
                 network: .mastodon,
                 rawId: boostId ?? id,
@@ -170,7 +195,8 @@ extension MastodonClient {
                 createdAt: date,
                 text: htmlToPlainText(content),
                 attributedText: autolinked(mastodonRichText(html: content, mentions: mentionLinks)),
-                imageURLs: mediaAttachments.filter { $0.type == "image" }.compactMap { URL(string: $0.url) },
+                imageURLs: imgs.map(\.0),
+                imageAspects: imgs.map(\.1),
                 videos: mediaAttachments.compactMap(\.postVideo),
                 // Show the link-preview card only when the post has no media of its own
                 // (mirrors the Bluesky rule that images/video win over a card).
@@ -179,7 +205,8 @@ extension MastodonClient {
                 threadID: id, // the original status id (for a boost this is the reblog's id)
                 replyCount: repliesCount ?? 0,
                 isReply: inReplyToId != nil,
-                postURL: url.flatMap { URL(string: $0) }
+                postURL: url.flatMap { URL(string: $0) },
+                replyParent: replyRef
             )
         }
 
@@ -198,7 +225,20 @@ extension MastodonClient {
         let type: String
         let url: String
         let previewUrl: String?
-        enum CodingKeys: String, CodingKey { case type, url; case previewUrl = "preview_url" }
+        let meta: Meta?
+        enum CodingKeys: String, CodingKey { case type, url, meta; case previewUrl = "preview_url" }
+        /// Aspect ratio (width/height) from the attachment metadata; 0 if absent.
+        var aspect: Double { meta?.aspect ?? 0 }
+
+        struct Meta: Decodable {
+            let original: Original?
+            var aspect: Double {
+                if let a = original?.aspect { return a }
+                if let w = original?.width, let h = original?.height, h > 0 { return Double(w) / Double(h) }
+                return 0
+            }
+        }
+        struct Original: Decodable { let width: Int?; let height: Int?; let aspect: Double? }
 
         /// A playable video/gifv attachment, if this is one and the URL parses.
         var postVideo: PostVideo? {
@@ -226,14 +266,18 @@ extension MastodonClient {
     }
 }
 
-/// Minimal HTML → text for Mastodon post bodies. Full rendering (links, mentions) is F11.
-// ponytail: regex strip + common entities; swap for AttributedString(html:) if rich text is needed.
+/// HTML → text for Mastodon post bodies. Converts block/line elements to newlines, strips the
+/// remaining tags, then decodes character references (named + decimal + hex). Full rich rendering
+/// (tappable links/mentions) is F11's `RichTextLabel`; this is the plain-text fallback.
 func htmlToPlainText(_ html: String) -> String {
     var text = html
-    text = text.replacingOccurrences(of: "</p>", with: "\n\n")
-    text = text.replacingOccurrences(of: "<br>", with: "\n")
-    text = text.replacingOccurrences(of: "<br/>", with: "\n")
-    text = text.replacingOccurrences(of: "<br />", with: "\n")
+    // Paragraph and line breaks → newlines, tolerating attributes, casing, and self-closing forms
+    // (`<br>`, `<BR/>`, `<br class="x">`). `</div>` also ends a line on some instances.
+    text = text.replacingOccurrences(of: "(?i)</p\\s*>|</div\\s*>", with: "\n\n", options: .regularExpression)
+    text = text.replacingOccurrences(of: "(?i)<br[^>]*>", with: "\n", options: .regularExpression)
     text = text.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
-    return decodeHTMLEntities(text).trimmingCharacters(in: .whitespacesAndNewlines)
+    text = decodeHTMLEntities(text)
+    // Collapse runs of blank lines the tag conversions can produce.
+    text = text.replacingOccurrences(of: "\n{3,}", with: "\n\n", options: .regularExpression)
+    return text.trimmingCharacters(in: .whitespacesAndNewlines)
 }

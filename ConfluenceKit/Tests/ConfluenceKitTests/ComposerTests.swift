@@ -12,7 +12,7 @@ struct PostClientTests {
             #expect((body["record"] as! [String: Any])["text"] as? String == "hello world")
             return (request.status(200), #"{"uri":"at://did:me/app.bsky.feed.post/1"}"#.data(using: .utf8)!)
         })
-        let uri = try await client.post(accessToken: "t", repoDID: "did:me", text: "hello world")
+        let uri = try await client.post(auth: .bearer("t"), repoDID: "did:me", text: "hello world")
         #expect(uri == "at://did:me/app.bsky.feed.post/1")
     }
 
@@ -33,7 +33,7 @@ struct PostClientTests {
             #expect(request.value(forHTTPHeaderField: "Content-Type") == "image/jpeg")
             return (request.status(200), #"{"blob":{"$type":"blob","ref":{"$link":"bafycid"},"mimeType":"image/jpeg","size":10}}"#.data(using: .utf8)!)
         })
-        let blob = try await upload.uploadImage(accessToken: "t", data: Data([1, 2, 3]), mimeType: "image/jpeg")
+        let blob = try await upload.uploadImage(auth: .bearer("t"), data: Data([1, 2, 3]), mimeType: "image/jpeg")
         let blobObj = try JSONSerialization.jsonObject(with: blob) as! [String: Any]
         #expect(blobObj["$type"] as? String == "blob")
 
@@ -48,7 +48,7 @@ struct PostClientTests {
             #expect(images[0]["alt"] as? String == "")
             return (request.status(200), #"{"uri":"at://x"}"#.data(using: .utf8)!)
         })
-        _ = try await post.post(accessToken: "t", repoDID: "did:me", text: "pic", images: [(blob: blob, alt: "")])
+        _ = try await post.post(auth: .bearer("t"), repoDID: "did:me", text: "pic", images: [(blob: blob, alt: "")])
     }
 
     @Test func blueskyPostSendsAltTextOnEmbeddedImage() async throws {
@@ -61,7 +61,7 @@ struct PostClientTests {
             #expect(images.map { $0["alt"] as? String } == ["a cat sitting on a keyboard", "sunset over hills"])
             return (request.status(200), #"{"uri":"at://x"}"#.data(using: .utf8)!)
         })
-        _ = try await post.post(accessToken: "t", repoDID: "did:me", text: "two pics", images: [
+        _ = try await post.post(auth: .bearer("t"), repoDID: "did:me", text: "two pics", images: [
             (blob: blob, alt: "a cat sitting on a keyboard"),
             (blob: blob, alt: "sunset over hills"),
         ])

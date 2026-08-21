@@ -16,12 +16,22 @@ import UIKit
 final class WebAuthSession: NSObject, WebAuthenticator, ASWebAuthenticationPresentationContextProviding, @unchecked Sendable {
     private var session: ASWebAuthenticationSession?
 
+    /// Guarantees a CheckedContinuation is resumed exactly once. Both the completion handler
+    /// (background queue) and the `start()`-failed path (main) can race to resume; without this
+    /// a double resume traps ("CONTINUATION MISUSE").
+    private final class Once: @unchecked Sendable {
+        private let lock = NSLock(); private var done = false
+        func claim() -> Bool { lock.lock(); defer { lock.unlock() }; if done { return false }; done = true; return true }
+    }
+
     func authenticate(url: URL, callbackScheme: String) async throws -> URL {
         try await withCheckedThrowingContinuation { continuation in
+            let once = Once()
             // Explicit @Sendable type forces this closure to be nonisolated. The app target
             // defaults to main-actor isolation (Xcode 26), but ASWebAuthenticationSession
             // invokes the handler on a background queue — an isolated closure would trap.
             let completion: @Sendable (URL?, (any Error)?) -> Void = { callbackURL, error in
+                guard once.claim() else { return }
                 if let callbackURL {
                     continuation.resume(returning: callbackURL)
                 } else if let error = error as? ASWebAuthenticationSessionError, error.code == .canceledLogin {
@@ -31,10 +41,11 @@ final class WebAuthSession: NSObject, WebAuthenticator, ASWebAuthenticationPrese
                 }
             }
             DispatchQueue.main.async {
+                self.session?.cancel() // abandon any in-flight session before starting a new one
                 let session = ASWebAuthenticationSession(url: url, callbackURLScheme: callbackScheme, completionHandler: completion)
                 session.presentationContextProvider = self
                 self.session = session // retain until the callback fires
-                if !session.start() {
+                if !session.start(), once.claim() {
                     continuation.resume(throwing: MastodonError.authorizationDenied)
                 }
             }

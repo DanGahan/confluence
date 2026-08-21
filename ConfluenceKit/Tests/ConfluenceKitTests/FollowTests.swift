@@ -14,7 +14,7 @@ struct BlueskyFollowTests {
             #expect(record["subject"] as? String == "did:plc:them")
             return (request.status(200), #"{"uri":"at://did:plc:me/app.bsky.graph.follow/abc","cid":"c"}"#.data(using: .utf8)!)
         })
-        let uri = try await client.follow(accessToken: "tok", repoDID: "did:plc:me", subjectDID: "did:plc:them")
+        let uri = try await client.follow(auth: .bearer("tok"), repoDID: "did:plc:me", subjectDID: "did:plc:them")
         #expect(uri == "at://did:plc:me/app.bsky.graph.follow/abc")
     }
 
@@ -27,7 +27,7 @@ struct BlueskyFollowTests {
             #expect(body["rkey"] == "abc")
             return (request.status(200), Data())
         })
-        try await client.unfollow(accessToken: "tok", followURI: "at://did:plc:me/app.bsky.graph.follow/abc")
+        try await client.unfollow(auth: .bearer("tok"), followURI: "at://did:plc:me/app.bsky.graph.follow/abc")
     }
 }
 

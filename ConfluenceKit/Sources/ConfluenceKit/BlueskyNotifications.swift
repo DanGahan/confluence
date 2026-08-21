@@ -2,17 +2,12 @@ import Foundation
 
 extension BlueskyClient {
     /// `app.bsky.notification.listNotifications` — filtered to follow/mention/repost.
-    public func notifications(accessToken: String, limit: Int = 50) async throws -> [NotificationItem] {
+    public func notifications(auth: BlueskyAuth, limit: Int = 50) async throws -> [NotificationItem] {
         var components = URLComponents(url: pdsURL.appending(path: "xrpc/app.bsky.notification.listNotifications"), resolvingAgainstBaseURL: false)!
         components.queryItems = [URLQueryItem(name: "limit", value: String(limit))]
-        var request = URLRequest(url: components.url!)
-        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        let request = URLRequest(url: components.url!)
 
-        let data: Data
-        let response: URLResponse
-        do { (data, response) = try await session.dataWithRateLimit(for: request) }
-        catch { throw BlueskyError.network }
-        guard let http = response as? HTTPURLResponse else { throw BlueskyError.malformedResponse }
+        let (data, http) = try await performAuthed(request, auth: auth)
         guard (200..<300).contains(http.statusCode) else {
             let err = (try? JSONDecoder().decode(ErrBody.self, from: data))?.error
             if http.statusCode == 401 || err == "ExpiredToken" || err == "InvalidToken" || err == "AuthenticationRequired" {

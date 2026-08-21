@@ -10,21 +10,23 @@ authoritative in-place markers), the SPEC, and open bug issues. When you add a
 | # | Gap | Where | Repay when |
 |---|---|---|---|
 | ~~G1~~ | ~~No 429 rate-limit backoff~~ — **repaid.** Central `URLSession.dataWithRateLimit(for:)` honours `Retry-After` (else exponential backoff + jitter, 3 retries, 30s cap). Both clients throw `.rateLimited` on exhaustion; `FeedStore`/`NotificationStore` expose a distinct `rateLimitedNetworks` set surfaced as a "try again in a moment" banner. | — | Done (#104) |
-| G2 | **Bluesky auth is app-password only.** ATProto OAuth is the sanctioned path; app passwords bypass 2FA and will eventually be deprecated. | `BlueskyClient.swift`, `BlueskyAccountStore.swift` | When Bluesky announces deprecation, or before public distribution |
+| ~~G2~~ | ~~Bluesky auth is app-password only~~ — **repaid (#105).** ATProto OAuth shipped end-to-end: PKCE + PAR + DPoP, client metadata hosted on `gh-pages`, verified on device (feed, posting, replies, DMs over DPoP). Onboarding leads with OAuth; app password stays as a fallback (no forced migration). Scope includes `transition:chat.bsky` for DMs. Token lifecycle hardened post-ship (#217): coalesced refresh, dead-token → `sessionExpired` re-auth banner, `bluesky-auth` refresh logging. | `docs/ATPROTO_OAUTH.md` | Done — remove the app-password path only if/when Bluesky deprecates it |
 | ~~G3~~ | ~~Engagement is one-way~~ — **repaid.** Repost/like are now toggles: Bluesky un-repost/un-like via `deleteRecord` (record URI kept per session), Mastodon `unreblog`/`unfavourite`. Optimistic, reverts on failure. | — | Done (#106) |
-| ~~G4~~ | ~~Token refresh wired per-closure~~ — **repaid.** Centralised as `BlueskyAccountStore.withFreshSession` (refresh-once-and-retry), unit-tested. | — | Done (#107) |
+| ~~G4~~ | ~~Token refresh wired per-closure~~ — **repaid.** Centralised as `BlueskyAccountStore.withAuth` (picks `.bearer`/`.dpop`, refresh-once-and-retry) over `coalescedRefresh` (one in-flight refresh so concurrent 401s don't race the rotating token — #217). Unit-tested. | — | Done (#107, hardened #217) |
 
 ## Implementation ceilings (`ponytail:` markers)
 
 | # | Shortcut | Where | Repay when |
 |---|---|---|---|
-| G5 | Mastodon HTML → text is a regex strip + common entities | `MastodonFeed.swift` (`htmlToPlainText`) | If posts render wrong entities/tags in the wild; swap for a real parser |
+| ~~G5~~ | ~~Mastodon HTML → text is a regex strip + common entities~~ — **repaid.** Now decodes named + decimal (`&#8217;`) + hex (`&#x1F600;`) character references and tolerates real-world tag variants (`<br class>`, `<BR/>`, `</div>`). | `RichText.swift` (`decodeHTMLEntities`), `MastodonFeed.swift` (`htmlToPlainText`) | Done (#121) |
 | ~~G6~~ | ~~Image retry: linear backoff, no jitter/cap~~ — **repaid.** Now exponential backoff with jitter, capped at 2000ms. | `RemoteImage.swift` | Done |
 | G7 | Composer images: fixed 1600 px / 0.8 JPEG, no HEIC | `ComposerView.swift` | Alt-text repaid (#122). HEIC still pending — swap when users complain about quality loss. |
 | G8 | Keychain falls back to legacy keychain on `errSecMissingEntitlement` (unsigned dev builds only) | `Keychain.swift` | Delete the fallback once builds are signed with a real team |
-| G9 | `LinkClickRouter` consumes mouse-down on link glyphs, so a drag-select can't *start* on a link | `RichTextLabel.swift` | Only if users report it; accepted trade for working links |
-| G10 | No offline cache — feed is refetched every launch; SwiftData cache is the named path | SPEC decision | Only if offline reading is requested |
+| ~~G9~~ | ~~`LinkClickRouter` consumes mouse-down on link glyphs, so a drag-select can't *start* on a link~~ — **repaid.** The router now forwards the click to the correct text view; NSTextView handles it natively — plain click opens the link, drag selects text from the glyph. | `RichTextLabel.swift` | Done (#124) |
+| ~~G10~~ | ~~No offline cache — feed is refetched every launch~~ — **closed as by-design (#125).** An explicit SPEC non-goal ("no caching the spec doesn't require"), not debt. Reopen only if offline reading becomes a requirement. | SPEC decision | N/A — deliberate |
 | ~~G14~~ | ~~Quick reply (Bluesky) sets `root` = `parent`, mis-rooting a reply to a mid-thread post~~ — **repaid.** The timeline already carries `record.reply.root`; captured as `FeedItem.replyRoot` and used so replies root at the conversation. | `BlueskyFeed.swift`, `BlueskyPost.swift` | Done (#152) |
+| G16 | DMs (F15): Bluesky chat is proxied through the default PDS (`bsky.social`); accounts on a self-hosted PDS won't reach the chat service. Mastodon threads cost two calls (status + `/context`); no pagination on messages/convos (first page only). No optimistic append on send failure beyond an inline retry. OAuth sessions reach chat via the `transition:chat.bsky` scope; a chat 403 surfaces a "reconnect Bluesky" hint (OAuth) or a "DM-scoped app password" hint (app password) in the inbox, not a Settings re-auth flow. | `BlueskyChat.swift`, `MastodonConversations.swift`, `DirectMessagesView.swift` | Per-PDS chat host, message pagination, and a Settings-driven re-auth flow if users hit these |
+| G17 | Feed depth is capped at 2000 loaded posts (`FeedStore.maxLoadedItems`) — every loaded post is held in memory and re-merged per page, so an unbounded deep scroll (a dense feed pages dozens of times to reach a day back) swamps the main thread + connection pool and the feed hangs. The cap stops pagination at a clean end instead. | `FeedStore.swift` | Windowing — evict off-screen pages so scroll is truly unbounded (keeps a sliding window in memory, refetches on scroll-up) |
 | G15 | Quick reply: (a) no optimistic insert — box collapses on success, next refresh shows the reply; (b) single-line field — a vertical-growth `TextField` inside the LazyVStack row explodes `sizeThatFits` and beachballs, so the field is fixed-height. (Character counter repaid: Bluesky 300 hard cap, Mastodon 500 soft guide.) | `QuickReply.swift` | (a) if users want the reply to appear instantly; (b) multiline needs a fixed-frame `TextEditor`, never `axis: .vertical`, in the lazy row |
 
 ## Structural debt
@@ -32,7 +34,7 @@ authoritative in-place markers), the SPEC, and open bug issues. When you add a
 | # | Gap | Where | Repay when |
 |---|---|---|---|
 | ~~G11~~ | ~~`FeedView.swift` is 674 lines / holds the closure-wiring~~ — **repaid.** Wiring extracted to `FeedWiring`; FeedView down to ~515 lines. | `FeedWiring.swift` | Done (#108) |
-| G12 | `FeedWindowConfigurator` polls `asyncAfter(0.05)` until the window exists to force tab grouping | `ConfluenceApp.swift` | If Apple ships SwiftUI tabbing control; until then it's contained |
+| ~~G12~~ | ~~`FeedWindowConfigurator` polls `asyncAfter(0.05)` until the window exists to force tab grouping~~ — **closed as an accepted permanent workaround (#109).** SwiftUI exposes no API to control window tab-grouping; contained and working. Reopen if Apple ships one. | `ConfluenceApp.swift` | N/A — needs Apple API |
 | ~~G13~~ | ~~`EphemeralSecureStore` is `@unchecked Sendable`~~ — **repaid.** Now `Synchronization.Mutex`, checked-Sendable (macOS 26 floor). | `Keychain.swift` | Done (#110) |
 
 ## Open bugs that are debt until fixed

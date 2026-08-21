@@ -132,5 +132,69 @@ struct BlueskyAccountStoreTests {
             try await sut.withFreshSession { _ in 1 }
         }
     }
+
+    /// #217: a burst of authed calls that all hit an expired token must trigger exactly ONE
+    /// refresh — ATProto rotates the refresh token, so concurrent refreshes with the same token
+    /// would fail all but the first.
+    @Test func concurrentExpiredCallsCoalesceToOneRefresh() async throws {
+        let keychain = InMemorySecureStore()
+        try keychain.set(okSessionJSON(access: "old"), for: "session")
+        let refreshes = RefreshCounter()
+        let sut = store(keychain) { req in
+            refreshes.bump() // the only network requests here are refreshSession calls
+            return (req.ok(), self.okSessionJSON(access: "new", refresh: "new-ref"))
+        }
+        await sut.restore()
+
+        // Each body fails once (token expired) then succeeds — like a real authed call.
+        func expiringBody() -> @Sendable (BlueskySession) async throws -> String {
+            let calls = RefreshCounter()
+            return { session in
+                if calls.bump() == 0 { throw BlueskyError.invalidCredentials }
+                return session.accessJwt
+            }
+        }
+        async let a = sut.withFreshSession(expiringBody())
+        async let b = sut.withFreshSession(expiringBody())
+        async let c = sut.withFreshSession(expiringBody())
+        let results = try await [a, b, c]
+        #expect(results == ["new", "new", "new"]) // all retried with the refreshed token
+        #expect(refreshes.value == 1)             // coalesced — not 3
+    }
+
+    /// #217: a dead OAuth refresh token (`invalid_grant`) can't be renewed — there's no stored
+    /// secret. The store must clear the session and raise `sessionExpired` so the UI prompts a
+    /// fresh sign-in, rather than dropping Bluesky silently or looping on "couldn't refresh".
+    @Test func deadRefreshTokenClearsOAuthSessionAndFlagsExpiry() async throws {
+        let keychain = InMemorySecureStore()
+        let key = DPoPKey()
+        let oauth = ATProtoOAuthSession(
+            did: "did:plc:abc", handle: "alice.bsky.social",
+            accessToken: "at", refreshToken: "dead",
+            dpopPrivateKey: key.exportPrivateKey(),
+            pdsURL: URL(string: "https://pds.example")!,
+            authorizationServer: URL(string: "https://bsky.social")!,
+            tokenEndpoint: URL(string: "https://bsky.social/oauth/token")!)
+        try keychain.set(oauth, for: "oauth-session")
+
+        let oauthSession = MockURLProtocol.session { req in
+            (req.status(400), #"{"error":"invalid_grant","error_description":"Invalid refresh token"}"#.data(using: .utf8)!)
+        }
+        let sut = BlueskyAccountStore(keychain: keychain, oauthURLSession: oauthSession)
+        await sut.restore()
+        #expect(sut.isLoggedIn) // OAuth session restored
+
+        await #expect(throws: BlueskyError.invalidCredentials) { try await sut.refreshOAuth() }
+        #expect(sut.oauthSession == nil)          // dead session cleared
+        #expect(sut.sessionExpired)               // UI can prompt re-auth
+        #expect(sut.isLoggedIn == false)
+        #expect((try? keychain.value(ATProtoOAuthSession.self, for: "oauth-session")) == nil)
+    }
+}
+
+private final class RefreshCounter: @unchecked Sendable {
+    private let lock = NSLock(); private var n = 0
+    @discardableResult func bump() -> Int { lock.withLock { defer { n += 1 }; return n } }
+    var value: Int { lock.withLock { n } }
 }
 

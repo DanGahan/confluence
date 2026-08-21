@@ -18,8 +18,12 @@ struct ThreadView: View {
 
     @State private var thread: PostThread?
     @State private var loading = true
+    @State private var cachedSelf: SelfAuthor?
 
     private let contentWidth: CGFloat = 448
+
+    /// Minimal identity for the signed-in user, to author an optimistically-inserted reply.
+    private struct SelfAuthor { let id: String; let name: String; let handle: String; let avatar: URL? }
 
     var body: some View {
         NavigationStack {
@@ -47,7 +51,8 @@ struct ThreadView: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
                     ForEach(thread.items) { post in
-                        ThreadPostRow(post: post, isFocus: post.id == thread.focusID)
+                        ThreadPostRow(post: post, isFocus: post.id == thread.focusID,
+                                      onReplyPosted: { text in insertOptimisticReply(after: post, text: text) })
                             .id(post.id)
                         Divider()
                     }
@@ -62,6 +67,44 @@ struct ThreadView: View {
         }
     }
 
+    /// Splice a just-sent reply into the thread immediately (G15). Called after the reply posts
+    /// successfully, so the server has it; we just avoid waiting for a manual reload to see it.
+    private func insertOptimisticReply(after post: FeedItem, text: String) {
+        Task {
+            let me = await resolveSelf()
+            let reply = FeedItem(network: post.network, rawId: "optimistic:\(UUID().uuidString)",
+                                 authorID: me.id, authorName: me.name, authorHandle: me.handle,
+                                 avatarURL: me.avatar, createdAt: Date(), text: text,
+                                 threadID: post.threadID, isReply: true)
+            thread = thread?.inserting(reply, after: post.id)
+        }
+    }
+
+    /// Best-effort identity for the signed-in user, cached for the thread's lifetime. Bluesky
+    /// comes from a profile fetch (refresh-safe); Mastodon from the current account.
+    private func resolveSelf() async -> SelfAuthor {
+        if let cachedSelf { return cachedSelf }
+        var resolved = SelfAuthor(id: "", name: "You", handle: "", avatar: nil)
+        switch item.network {
+        case .bluesky:
+            let client = bluesky.blueskyClient()
+            if let profile = try? await bluesky.withAuth({ auth, did in
+                try await client.profile(auth: auth, actor: did)
+            }) {
+                resolved = SelfAuthor(id: profile.authorID, name: profile.name, handle: profile.handle, avatar: profile.avatarURL)
+            } else if let did = bluesky.currentDID, let handle = bluesky.currentHandle {
+                resolved = SelfAuthor(id: did, name: handle, handle: handle, avatar: nil)
+            }
+        case .mastodon:
+            if let s = mastodon.session,
+               let profile = try? await MastodonClient().currentAccount(host: s.host, accessToken: s.accessToken) {
+                resolved = SelfAuthor(id: profile.authorID, name: profile.name, handle: profile.handle, avatar: profile.avatarURL)
+            }
+        }
+        cachedSelf = resolved
+        return resolved
+    }
+
     private func load() async {
         loading = true
         defer { loading = false }
@@ -72,8 +115,9 @@ struct ThreadView: View {
         do {
             switch item.network {
             case .bluesky:
-                guard let session = bluesky.session else { log.error("thread open: no Bluesky session"); return }
-                thread = try await BlueskyClient().postThread(accessToken: session.accessJwt, uri: item.threadID)
+                guard bluesky.isLoggedIn else { log.error("thread open: no Bluesky session"); return }
+                let client = bluesky.blueskyClient()
+                thread = try await bluesky.withAuth { auth, _ in try await client.postThread(auth: auth, uri: item.threadID) }
             case .mastodon:
                 guard let session = mastodon.session else { log.error("thread open: no Mastodon session"); return }
                 thread = try await MastodonClient().statusContext(host: session.host, accessToken: session.accessToken, statusID: item.threadID)
@@ -93,6 +137,7 @@ private struct ThreadPostRow: View {
     @AppStorage(PostAppearance.linkColorKey) private var linkColorHex = PostAppearance.defaultLinkColorHex
     let post: FeedItem
     let isFocus: Bool
+    var onReplyPosted: (String) -> Void
     @State private var showingProfile = false
     @State private var replyExpanded = false
 
@@ -127,7 +172,7 @@ private struct ThreadPostRow: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 if !post.imageURLs.isEmpty {
-                    PostImages(urls: post.imageURLs, letterboxHeight: 120)
+                    PostImages(urls: post.imageURLs, aspects: post.imageAspects, letterboxHeight: 120)
                 }
                 ForEach(post.videos) { video in
                     PostVideoView(video: video)
@@ -140,7 +185,7 @@ private struct ThreadPostRow: View {
         .padding(.vertical, 8)
         .padding(.horizontal, isFocus ? 8 : 0)
         .background(isFocus ? Color.accentColor.opacity(0.10) : .clear, in: RoundedRectangle(cornerRadius: 8))
-        .quickReply(post, expanded: $replyExpanded)
+        .quickReply(post, expanded: $replyExpanded, onPosted: onReplyPosted)
         .contextMenu {
             Button("Reply", systemImage: "arrowshape.turn.up.left") { replyExpanded = true }
             Divider()

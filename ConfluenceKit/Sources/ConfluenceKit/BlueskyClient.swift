@@ -18,9 +18,16 @@ public enum BlueskyError: Error, Equatable, LocalizedError {
     case server(String)
     case network
     case malformedResponse
+    /// The account can't reach a feature it lacks permission for (chat 403 / `ScopeMissingError`):
+    /// an OAuth token without the chat scope, or an app password without DM access. Distinct from
+    /// `invalidCredentials` on purpose — refreshing the token won't help, so callers must NOT treat
+    /// it as an expired session (that would rotate the token on every DM poll).
+    case chatUnavailable
 
     public var errorDescription: String? {
         switch self {
+        case .chatUnavailable:
+            return "Bluesky Direct Messages need message permission. Reconnect your Bluesky account (or use an app password with direct-message access) to enable DMs."
         case .invalidCredentials:
             return "Incorrect handle or app password. Use your full handle (e.g. alice.bsky.social) and an app password from bsky.app — not your main password."
         case .twoFactorRequired:
@@ -42,10 +49,13 @@ public enum BlueskyError: Error, Equatable, LocalizedError {
 public struct BlueskyClient: Sendable {
     public let pdsURL: URL
     let session: URLSession
+    let nonceStore: DPoPNonceStore
 
-    public init(pdsURL: URL = URL(string: "https://bsky.social")!, session: URLSession = .shared) {
+    public init(pdsURL: URL = URL(string: "https://bsky.social")!, session: URLSession = .shared,
+                nonceStore: DPoPNonceStore = .shared) {
         self.pdsURL = pdsURL
         self.session = session
+        self.nonceStore = nonceStore
     }
 
     /// `com.atproto.server.createSession` — exchanges handle + app password for tokens.
@@ -107,5 +117,62 @@ public struct BlueskyClient: Sendable {
     private struct XRPCError: Decodable {
         let error: String?
         let message: String?
+    }
+}
+
+/// How an authenticated XRPC request is signed. App-password sessions use `Bearer`; ATProto
+/// OAuth sessions (#105) use `DPoP` — a `DPoP <token>` authorization scheme plus a per-request
+/// proof header. Chosen by `BlueskyAccountStore.withAuth` based on which session is active.
+public enum BlueskyAuth: Sendable {
+    case bearer(String)
+    case dpop(accessToken: String, key: DPoPKey)
+}
+
+extension BlueskyClient {
+    /// Signs and performs an authed request, returning the raw `(Data, HTTPURLResponse)` so each
+    /// caller keeps its existing status handling. For DPoP, a per-request proof is attached and the
+    /// request is retried once if the server challenges with a `DPoP-Nonce`. A still-401 after that
+    /// is a genuine expired token — the caller throws `.invalidCredentials` and `withAuth` refreshes.
+    func performAuthed(_ request: URLRequest, auth: BlueskyAuth) async throws -> (Data, HTTPURLResponse) {
+        func run(_ req: URLRequest) async throws -> (Data, HTTPURLResponse) {
+            let data: Data
+            let response: URLResponse
+            do { (data, response) = try await session.dataWithRateLimit(for: req) }
+            catch let error as BlueskyError { throw error }
+            catch { throw BlueskyError.network }
+            guard let http = response as? HTTPURLResponse else { throw BlueskyError.malformedResponse }
+            return (data, http)
+        }
+        switch auth {
+        case .bearer(let token):
+            var req = request
+            req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            return try await run(req)
+        case .dpop(let token, let key):
+            let builder = DPoPProofBuilder(key: key)
+            let method = request.httpMethod ?? "GET"
+            guard let url = request.url else { throw BlueskyError.malformedResponse }
+            let host = url.host ?? ""
+            // One signed attempt with the given nonce; returns the result + any fresh nonce the
+            // server handed back (which we always cache, success or not).
+            func attempt(_ nonce: String?) async throws -> (Data, HTTPURLResponse, String?) {
+                var req = request
+                req.setValue("DPoP \(token)", forHTTPHeaderField: "Authorization")
+                req.setValue(try builder.proof(htm: method, htu: url, nonce: nonce, accessToken: token),
+                             forHTTPHeaderField: "DPoP")
+                let (data, http) = try await run(req)
+                return (data, http, http.value(forHTTPHeaderField: "DPoP-Nonce"))
+            }
+            var (data, http, fresh) = try await attempt(await nonceStore.nonce(for: host))
+            await nonceStore.store(fresh, for: host)
+            // Retry once if the server rejected with a nonce to use (first call, or the cached
+            // nonce rotated). A still-401 after is a real expired token → withAuth refreshes.
+            if http.statusCode == 401, let retryNonce = fresh {
+                let retried = try await attempt(retryNonce)
+                data = retried.0; http = retried.1
+                await nonceStore.store(retried.2, for: host)
+            }
+            return (data, http)
+        }
     }
 }

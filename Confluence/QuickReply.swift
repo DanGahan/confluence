@@ -31,6 +31,10 @@ private struct QuickReply: ViewModifier {
     @Environment(PostActionStore.self) private var postActions
     /// Owned by the host row so its context menu can open the box too, not just the body tap.
     @Binding var expanded: Bool
+    /// Called with the sent text after a reply posts successfully — the thread uses it to insert
+    /// the reply optimistically (G15). Contexts where an inline insert has no place (feed, search)
+    /// leave it nil and rely on the next refresh.
+    var onPosted: ((String) -> Void)?
     @State private var text = ""
     @State private var posting = false
     @State private var errorMessage: String?
@@ -115,11 +119,13 @@ private struct QuickReply: ViewModifier {
     private func send() {
         posting = true
         errorMessage = nil
+        let sent = text.trimmingCharacters(in: .whitespacesAndNewlines)
         Task {
             do {
-                try await postActions.reply(item, text: text.trimmingCharacters(in: .whitespacesAndNewlines))
-                // ponytail: no optimistic insert — collapse and let the next refresh show the
-                // reply. Adding one means splicing the new post into the live feed/thread state.
+                try await postActions.reply(item, text: sent)
+                // The server has accepted the reply, so inserting now is safe (no rollback). The
+                // thread splices it in via PostThread.inserting; other contexts refresh later.
+                onPosted?(sent)
                 collapse()
             } catch {
                 errorMessage = (error as? LocalizedError)?.errorDescription ?? "Couldn't post reply. Please try again."
@@ -131,8 +137,9 @@ private struct QuickReply: ViewModifier {
 
 extension View {
     /// Make a post row expand an inline reply box. `expanded` is owned by the row so its
-    /// context menu can also open the box (via a "Reply" item), not just a body tap.
-    func quickReply(_ item: FeedItem, expanded: Binding<Bool>) -> some View {
-        modifier(QuickReply(item: item, expanded: expanded))
+    /// context menu can also open the box (via a "Reply" item), not just a body tap. `onPosted`
+    /// (optional) fires with the sent text after a successful reply, for optimistic insertion.
+    func quickReply(_ item: FeedItem, expanded: Binding<Bool>, onPosted: ((String) -> Void)? = nil) -> some View {
+        modifier(QuickReply(item: item, expanded: expanded, onPosted: onPosted))
     }
 }

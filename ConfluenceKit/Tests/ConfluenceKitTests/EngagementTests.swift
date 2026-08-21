@@ -18,7 +18,7 @@ struct EngagementTests {
             #expect(subject["cid"] as? String == "bafycid")
             return (request.status(200), #"{"uri":"at://did/app.bsky.feed.repost/xyz"}"#.data(using: .utf8)!)
         })
-        let uri = try await client.repost(accessToken: "tok", repoDID: "did", uri: "at://did/app.bsky.feed.post/1", cid: "bafycid")
+        let uri = try await client.repost(auth: .bearer("tok"), repoDID: "did", uri: "at://did/app.bsky.feed.post/1", cid: "bafycid")
         #expect(uri == "at://did/app.bsky.feed.repost/xyz")
     }
 
@@ -28,7 +28,7 @@ struct EngagementTests {
             #expect(body["collection"] as? String == "app.bsky.feed.like")
             return (request.status(200), #"{"uri":"at://x"}"#.data(using: .utf8)!)
         })
-        _ = try await client.like(accessToken: "t", repoDID: "did", uri: "at://p", cid: "c")
+        _ = try await client.like(auth: .bearer("t"), repoDID: "did", uri: "at://p", cid: "c")
     }
 
     @Test func blueskyBlockUsesGraphBlockWithDIDSubject() async throws {
@@ -39,7 +39,7 @@ struct EngagementTests {
             #expect(record["subject"] as? String == "did:plc:target")
             return (request.status(200), #"{"uri":"at://b"}"#.data(using: .utf8)!)
         })
-        _ = try await client.block(accessToken: "t", repoDID: "did", subjectDID: "did:plc:target")
+        _ = try await client.block(auth: .bearer("t"), repoDID: "did", subjectDID: "did:plc:target")
     }
 
     @Test func blueskyDeletePostSendsDeleteRecord() async throws {
@@ -51,7 +51,7 @@ struct EngagementTests {
             #expect(body["rkey"] as? String == "abc")
             return (request.status(200), Data())
         })
-        try await client.deletePost(accessToken: "t", uri: "at://did:me/app.bsky.feed.post/abc")
+        try await client.deletePost(auth: .bearer("t"), uri: "at://did:me/app.bsky.feed.post/abc")
     }
 
     @Test func blueskyDeleteRecordParsesRepostURI() async throws {
@@ -64,7 +64,7 @@ struct EngagementTests {
             #expect(body["rkey"] as? String == "xyz")
             return (request.status(200), Data())
         })
-        try await client.deleteRecord(accessToken: "t", uri: "at://did:me/app.bsky.feed.repost/xyz")
+        try await client.deleteRecord(auth: .bearer("t"), uri: "at://did:me/app.bsky.feed.repost/xyz")
     }
 
     @Test func mastodonUnreblogAndUnfavouritePaths() async throws {
@@ -94,7 +94,7 @@ struct EngagementTests {
     @Test func blueskyEngagement401MapsToInvalidCredentials() async {
         let client = BlueskyClient(session: MockURLProtocol.session { ($0.status(401), Data()) })
         await #expect(throws: BlueskyError.invalidCredentials) {
-            _ = try await client.like(accessToken: "stale", repoDID: "did", uri: "at://p", cid: "c")
+            _ = try await client.like(auth: .bearer("stale"), repoDID: "did", uri: "at://p", cid: "c")
         }
     }
 
@@ -136,7 +136,7 @@ struct EngagementTests {
         }}]}
         """.data(using: .utf8)!
         let client = BlueskyClient(session: MockURLProtocol.session { ($0.status(200), json) })
-        let item = try #require(try await client.timeline(accessToken: "t", cursor: nil).items.first)
+        let item = try #require(try await client.timeline(auth: .bearer("t"), cursor: nil).items.first)
         #expect(item.cid == "bafyxyz")
         #expect(item.postURL?.absoluteString == "https://bsky.app/profile/alice.bsky.social/post/abc123")
     }

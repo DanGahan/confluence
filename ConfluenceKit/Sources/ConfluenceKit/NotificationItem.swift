@@ -35,6 +35,14 @@ public struct NotificationItem: Identifiable, Sendable, Equatable {
     }
 }
 
+public extension Array where Element == NotificationItem {
+    /// Mentions only, optionally narrowed to one network (nil = both). Backs the Mentions
+    /// screen (#197), which is a filtered view over the same notification stream.
+    func mentions(network: Network? = nil) -> [NotificationItem] {
+        filter { $0.kind == .mention && (network == nil || $0.network == network) }
+    }
+}
+
 /// Merges per-network notifications, newest first, de-duplicated (deterministic ties).
 public func mergeNotifications(_ groups: [[NotificationItem]]) -> [NotificationItem] {
     var seen = Set<String>()

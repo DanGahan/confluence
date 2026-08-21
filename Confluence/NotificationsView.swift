@@ -36,7 +36,7 @@ struct NotificationsView: View {
     }
 }
 
-private struct NotificationRow: View {
+struct NotificationRow: View {
     @Environment(\.openURL) private var openURL
     let item: NotificationItem
 

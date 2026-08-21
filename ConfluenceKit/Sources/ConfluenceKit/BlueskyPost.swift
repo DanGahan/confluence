@@ -3,14 +3,13 @@ import Foundation
 extension BlueskyClient {
     /// Uploads image bytes via `com.atproto.repo.uploadBlob`. Returns the `blob` object as JSON
     /// data, ready to embed in a post's `app.bsky.embed.images`.
-    public func uploadImage(accessToken: String, data: Data, mimeType: String) async throws -> Data {
+    public func uploadImage(auth: BlueskyAuth, data: Data, mimeType: String) async throws -> Data {
         var request = URLRequest(url: pdsURL.appending(path: "xrpc/com.atproto.repo.uploadBlob"))
         request.httpMethod = "POST"
         request.setValue(mimeType, forHTTPHeaderField: "Content-Type")
-        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         request.httpBody = data
 
-        let (respData, http) = try await send(request)
+        let (respData, http) = try await performAuthed(request, auth: auth)
         guard (200..<300).contains(http.statusCode) else {
             if http.statusCode == 401 { throw BlueskyError.invalidCredentials }
             if http.statusCode == 429 { throw BlueskyError.rateLimited }
@@ -24,7 +23,7 @@ extension BlueskyClient {
     /// Creates an `app.bsky.feed.post` record, optionally with image blobs and per-image alt-text.
     /// `images` pairs each uploaded blob (returned by `uploadImage`) with its alt description
     /// (empty string is allowed and posts as no description).
-    public func post(accessToken: String, repoDID: String, text: String,
+    public func post(auth: BlueskyAuth, repoDID: String, text: String,
                      images: [(blob: Data, alt: String)] = [],
                      reply: (parent: PostRef, root: PostRef)? = nil) async throws -> String {
         var record: [String: Any] = [
@@ -48,12 +47,11 @@ extension BlueskyClient {
         var request = URLRequest(url: pdsURL.appending(path: "xrpc/com.atproto.repo.createRecord"))
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         request.httpBody = try JSONSerialization.data(withJSONObject: [
             "repo": repoDID, "collection": "app.bsky.feed.post", "record": record,
         ])
 
-        let (data, http) = try await send(request)
+        let (data, http) = try await performAuthed(request, auth: auth)
         guard (200..<300).contains(http.statusCode) else {
             if http.statusCode == 401 { throw BlueskyError.invalidCredentials }
             if http.statusCode == 429 { throw BlueskyError.rateLimited }
@@ -62,14 +60,5 @@ extension BlueskyClient {
         struct Created: Decodable { let uri: String }
         guard let created = try? JSONDecoder().decode(Created.self, from: data) else { throw BlueskyError.malformedResponse }
         return created.uri
-    }
-
-    private func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
-        do {
-            let (data, response) = try await session.dataWithRateLimit(for: request)
-            guard let http = response as? HTTPURLResponse else { throw BlueskyError.malformedResponse }
-            return (data, http)
-        } catch let error as BlueskyError { throw error }
-        catch { throw BlueskyError.network }
     }
 }

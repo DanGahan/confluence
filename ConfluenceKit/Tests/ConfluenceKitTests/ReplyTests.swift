@@ -19,7 +19,7 @@ struct ReplyTests {
             #expect(root["cid"] as? String == "bafyroot")
             return (request.status(200), #"{"uri":"at://did:me/app.bsky.feed.post/xyz"}"#.data(using: .utf8)!)
         })
-        _ = try await client.post(accessToken: "t", repoDID: "did:me", text: "nice one",
+        _ = try await client.post(auth: .bearer("t"), repoDID: "did:me", text: "nice one",
                                   reply: (parent: PostRef(uri: "at://did:them/app.bsky.feed.post/mid", cid: "bafymid"),
                                           root: PostRef(uri: "at://did:them/app.bsky.feed.post/root", cid: "bafyroot")))
     }
@@ -31,7 +31,7 @@ struct ReplyTests {
             #expect(record["reply"] == nil)
             return (request.status(200), #"{"uri":"at://did:me/app.bsky.feed.post/xyz"}"#.data(using: .utf8)!)
         })
-        _ = try await client.post(accessToken: "t", repoDID: "did:me", text: "top level")
+        _ = try await client.post(auth: .bearer("t"), repoDID: "did:me", text: "top level")
     }
 
     @Test func mastodonReplySendsInReplyToID() async throws {
@@ -52,5 +52,17 @@ struct ReplyTests {
             return (request.status(200), "{}".data(using: .utf8)!)
         })
         try await client.post(host: "mastodon.social", accessToken: "t", text: "top level")
+    }
+}
+
+struct BlueskyResolveHandleTests {
+    @Test func resolveHandleReturnsDID() async throws {
+        let client = BlueskyClient(session: MockURLProtocol.session { request in
+            #expect(request.url?.path == "/xrpc/com.atproto.identity.resolveHandle")
+            #expect(request.url?.query?.contains("handle=lisaocarroll.bsky.social") == true)
+            return (request.status(200), #"{"did":"did:plc:lisa"}"#.data(using: .utf8)!)
+        })
+        let did = try await client.resolveHandle(auth: .bearer("t"), handle: "lisaocarroll.bsky.social")
+        #expect(did == "did:plc:lisa")
     }
 }

@@ -17,7 +17,7 @@ struct NotificationDecodingTests {
             #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer tok")
             return (request.status(200), json)
         })
-        let notes = try await client.notifications(accessToken: "tok")
+        let notes = try await client.notifications(auth: .bearer("tok"))
         #expect(notes.map(\.kind) == [.follow, .repost, .mention]) // like filtered out
         #expect(notes[0].actorName == "Alice")
         #expect(notes[0].actorID == "did:plc:alice")
@@ -54,6 +54,18 @@ struct NotificationStoreTests {
     }
     func store() -> NotificationStore {
         NotificationStore(defaults: UserDefaults(suiteName: "test.\(UUID().uuidString)")!)
+    }
+
+    @Test func mentionsFilterByKindAndNetwork() {
+        func note(_ n: Network, _ id: String, _ k: NotificationItem.Kind) -> NotificationItem {
+            NotificationItem(network: n, rawId: id, kind: k, actorID: id, actorName: "A",
+                             actorHandle: "a", avatarURL: nil, createdAt: Date())
+        }
+        let items = [note(.bluesky, "1", .follow), note(.bluesky, "2", .mention),
+                     note(.mastodon, "3", .mention), note(.mastodon, "4", .repost)]
+        #expect(items.mentions().map(\.rawId) == ["2", "3"])
+        #expect(items.mentions(network: .bluesky).map(\.rawId) == ["2"])
+        #expect(items.mentions(network: .mastodon).map(\.rawId) == ["3"])
     }
 
     @Test func refreshMergesAndCountsAllUnreadInitially() async {

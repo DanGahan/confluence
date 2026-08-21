@@ -40,6 +40,24 @@ public struct PostRef: Sendable, Equatable {
     }
 }
 
+/// A preview of the post a reply is responding to — shown as a card below the reply, tappable to
+/// open that post's thread. `snippet` may be empty when the parent's text isn't in the feed data
+/// (Mastodon home timeline gives only the parent's author + id, not its body).
+public struct ReplyRef: Sendable, Equatable {
+    public let authorName: String
+    public let authorHandle: String
+    public let snippet: String
+    /// The parent post's id/URI — opens its thread.
+    public let threadID: String
+
+    public init(authorName: String, authorHandle: String, snippet: String, threadID: String) {
+        self.authorName = authorName
+        self.authorHandle = authorHandle
+        self.snippet = snippet
+        self.threadID = threadID
+    }
+}
+
 /// A single post in the combined feed, normalized across networks.
 public struct FeedItem: Identifiable, Sendable, Equatable {
     public let network: Network
@@ -54,6 +72,10 @@ public struct FeedItem: Identifiable, Sendable, Equatable {
     /// Rich version of `text` with `.link` runs for URLs and @-mentions. Defaults to plain text.
     public let attributedText: AttributedString
     public let imageURLs: [URL]
+    /// Aspect ratio (width/height) for each image in `imageURLs`, when the API provides it — used
+    /// to reserve the image's space before it loads so image-heavy rows don't grow and shift the
+    /// scroll (#196). 0 = unknown. Aligned 1:1 with `imageURLs`.
+    public let imageAspects: [Double]
     /// Videos/GIFs attached to the post (Bluesky video embed, Mastodon video/gifv).
     public let videos: [PostVideo]
     /// A shared-link preview card, when the post embeds one and has no images.
@@ -78,6 +100,8 @@ public struct FeedItem: Identifiable, Sendable, Equatable {
     public let replyRoot: PostRef?
     /// Public web URL for the post (Share, Reading List). bsky.app / instance permalink.
     public let postURL: URL?
+    /// When this post is a reply, a preview of the post it answers (for the reply-context card).
+    public let replyParent: ReplyRef?
 
     public var id: String { "\(network.rawValue):\(rawId)" }
     /// Identity key for the author across items (follow state is tracked per author).
@@ -87,10 +111,11 @@ public struct FeedItem: Identifiable, Sendable, Equatable {
 
     public init(network: Network, rawId: String, authorID: String = "", authorName: String, authorHandle: String,
                 avatarURL: URL?, createdAt: Date, text: String, attributedText: AttributedString? = nil,
-                imageURLs: [URL] = [], videos: [PostVideo] = [], linkCard: LinkCard? = nil, repostedBy: String? = nil,
+                imageURLs: [URL] = [], imageAspects: [Double] = [], videos: [PostVideo] = [], linkCard: LinkCard? = nil, repostedBy: String? = nil,
                 isFollowing: Bool = false, followURI: String? = nil,
                 threadID: String? = nil, replyCount: Int = 0, isReply: Bool = false,
-                cid: String? = nil, replyRoot: PostRef? = nil, postURL: URL? = nil) {
+                cid: String? = nil, replyRoot: PostRef? = nil, postURL: URL? = nil,
+                replyParent: ReplyRef? = nil) {
         self.network = network
         self.rawId = rawId
         self.authorID = authorID
@@ -101,6 +126,7 @@ public struct FeedItem: Identifiable, Sendable, Equatable {
         self.text = text
         self.attributedText = attributedText ?? AttributedString(text)
         self.imageURLs = imageURLs
+        self.imageAspects = imageAspects
         self.videos = videos
         self.linkCard = linkCard
         self.repostedBy = repostedBy
@@ -112,6 +138,7 @@ public struct FeedItem: Identifiable, Sendable, Equatable {
         self.cid = cid
         self.replyRoot = replyRoot
         self.postURL = postURL
+        self.replyParent = replyParent
     }
 }
 
@@ -123,6 +150,19 @@ public struct PostThread: Sendable, Equatable {
     public init(items: [FeedItem], focusID: String) {
         self.items = items
         self.focusID = focusID
+    }
+
+    /// A copy with `reply` spliced in right after the post it answers (by id), or appended if
+    /// that post isn't in the thread. Backs optimistic quick-reply insertion (G15) — the reply
+    /// shows immediately after it posts, without waiting for a full thread reload.
+    public func inserting(_ reply: FeedItem, after postID: String) -> PostThread {
+        var items = self.items
+        if let idx = items.firstIndex(where: { $0.id == postID }) {
+            items.insert(reply, at: items.index(after: idx))
+        } else {
+            items.append(reply)
+        }
+        return PostThread(items: items, focusID: focusID)
     }
 }
 

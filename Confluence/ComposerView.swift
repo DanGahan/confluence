@@ -58,7 +58,7 @@ struct ComposerView: View {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 8) {
                     if composer.isConnected(.bluesky) {
-                        Toggle(isOn: $composer.postToBluesky) { accountRow(.bluesky, fallback: bluesky.session?.handle) }
+                        Toggle(isOn: $composer.postToBluesky) { accountRow(.bluesky, fallback: bluesky.currentHandle) }
                     }
                     if composer.isConnected(.mastodon) {
                         Toggle(isOn: $composer.postToMastodon) { accountRow(.mastodon, fallback: mastodon.session?.host) }
@@ -326,8 +326,9 @@ struct ComposerView: View {
     }
 
     private func load() async {
-        if let session = bluesky.session, accounts[.bluesky] == nil {
-            accounts[.bluesky] = try? await BlueskyClient().profile(accessToken: session.accessJwt, actor: session.did)
+        if bluesky.isLoggedIn, accounts[.bluesky] == nil {
+            let client = bluesky.blueskyClient()
+            accounts[.bluesky] = try? await bluesky.withAuth { auth, did in try await client.profile(auth: auth, actor: did) }
         }
         if let session = mastodon.session, accounts[.mastodon] == nil {
             accounts[.mastodon] = try? await MastodonClient().currentAccount(host: session.host, accessToken: session.accessToken)
@@ -338,8 +339,9 @@ struct ComposerView: View {
     private func loadFollowing() async {
         guard following.isEmpty else { return }
         var all: [SearchActor] = []
-        if let session = bluesky.session {
-            all += (try? await BlueskyClient().followList(accessToken: session.accessJwt, actor: session.did, kind: .following, limit: 100)) ?? []
+        if bluesky.isLoggedIn {
+            let client = bluesky.blueskyClient()
+            all += (try? await bluesky.withAuth { auth, did in try await client.followList(auth: auth, actor: did, kind: .following, limit: 100) }) ?? []
         }
         if let session = mastodon.session, let id = accounts[.mastodon]?.authorID {
             all += (try? await MastodonClient().followList(host: session.host, accessToken: session.accessToken, accountID: id, kind: .following, limit: 100)) ?? []

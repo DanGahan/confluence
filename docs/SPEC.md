@@ -13,7 +13,7 @@ A native Apple app showing a combined Bluesky + Mastodon feed, on **macOS and iO
 
 ## Accounts & protocols
 
-- **Bluesky:** AT Protocol XRPC. MVP auth = app password via `com.atproto.server.createSession`; store the refresh + access JWTs in Keychain, refresh via `com.atproto.server.refreshSession`. (`ponytail:` upgrade to ATProto OAuth when Bluesky deprecates app passwords.)
+- **Bluesky:** AT Protocol XRPC. MVP auth = app password via `com.atproto.server.createSession`; store the refresh + access JWTs in Keychain, refresh via `com.atproto.server.refreshSession`. (`ponytail:` upgrade to ATProto OAuth when Bluesky deprecates app passwords.) **DMs (F15) need an app password with the "Allow access to your direct messages" scope** — a normal app password can't call the chat service, so onboarding/Settings must let the user know and re-issue one.
 - **Mastodon:** Mastodon REST API. Auth = OAuth 2.0 authorization-code flow via `ASWebAuthenticationSession`, with dynamic client registration (`POST /api/v1/apps`) against the user's chosen instance. Store the access token in Keychain.
 - One account per network for MVP. Multi-account is out of scope.
 
@@ -84,6 +84,25 @@ A native Apple app showing a combined Bluesky + Mastodon feed, on **macOS and iO
 - Reply posts to the network the original came from, using that account, attached as a reply (Bluesky reply record; Mastodon `in_reply_to_id`). On success the box collapses and clears; on failure it stays open with an inline error.
 - Reply field + Reply button carry VoiceOver labels; empty text disables Reply.
 
+### F15 — Direct Messages (both networks)
+A unified DM inbox: a conversations list and a per-conversation message thread, read **and** send, across both networks. Reached from a dedicated entry (envelope) — the `•••` menu on iOS, a toolbar/menu item on macOS. Each conversation is network-badged.
+
+**Privacy honesty (non-negotiable).** Neither network's DMs are end-to-end encrypted, and Mastodon "DMs" are not a private inbox at all — they are `direct`-visibility posts stored on the server, and **anyone @-mentioned in the thread is added to it**. Every Mastodon conversation carries a plain "Not private — visible to the server and everyone mentioned" note. No UI element may imply encryption or privacy the protocol doesn't provide.
+
+- **Bluesky:** the chat service (`chat.bsky.convo.*` — `listConvos`, `getMessages`, `sendMessage`, `updateRead`), reached by proxying to the chat DID (`atproto-proxy: did:web:api.bsky.chat#bsky_chat`). Requires the DM-scoped app password (see Accounts & protocols); if the stored credential lacks chat access, surface a clear re-issue prompt instead of a raw error. Not E2E encrypted.
+- **Mastodon:** `GET /api/v1/conversations` (list), `POST /api/v1/conversations/:id/read` (mark read). A message is a `direct`-visibility status; sending = `POST /api/v1/statuses` with `visibility: direct`, the other participants @-mentioned, and `in_reply_to_id` for threading. Character limit reuses the composer's per-network logic (F8).
+- **Read:** conversations sorted by most-recent activity — participant avatar/name/handle, last-message snippet, relative time, unread dot, network badge. Opening a conversation shows its messages chronologically and marks it read (Bluesky `updateRead`; Mastodon conversations read endpoint).
+- **Send:** a compose/reply box at the foot of the thread posts to that conversation's network only — **never cross-posted**. Optimistic append; on failure the message stays with an inline error and a retry, matching F8's per-network honesty. Empty text disables Send.
+- **Unread + polling:** piggyback the F9 notifications poll (60 s, frontmost-only) for an unread indicator on the DM entry; fetch a conversation's messages on open. (`ponytail:` no push notifications — add only if a server component ever exists.)
+- **Security:** message bodies are hostile input — typed `Codable`, tolerate missing/extra fields, render as text (never evaluated); **never log message content** (`%{private}`); tokens stay in Keychain. Any auth/entitlement touch gets a security pass.
+- **Accessibility:** VoiceOver labels on conversation rows, messages, and the send box; usable at the 480×600 min and via VoiceOver/keyboard; Dynamic Type on iOS.
+
+### F16 — Reply-context card
+When a feed post is itself a reply, show a card below it previewing the post it's responding to, styled like the link-preview card; tapping it opens that post's thread. Everywhere the feed renders (feed, search, profile).
+- **Bluesky:** the home timeline carries the parent inline (`reply.parent` PostView) — author + text shown.
+- **Mastodon:** the home timeline gives only the parent's author + id, so the card lazily fetches the parent (`GET /api/v1/statuses/:id`) to show its body, cached per id across rows.
+- Not-found/blocked parents are skipped (no card). Card carries a VoiceOver label and opens the thread on tap/return.
+
 ## Non-functional requirements
 
 - Feed merge of 200 posts must complete in < 50 ms (unit-tested).
@@ -93,4 +112,6 @@ A native Apple app showing a combined Bluesky + Mastodon feed, on **macOS and iO
 
 ## Out of scope (MVP)
 
-Multi-account, DMs, lists, offline cache, quote posts, polls, video upload, algorithmic feeds, muting/blocking, translations.
+Multi-account, lists, offline cache, quote posts, polls, video upload, algorithmic feeds, muting/blocking, translations.
+
+(DMs moved **into** scope as F15.)

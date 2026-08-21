@@ -2,14 +2,13 @@ import Foundation
 
 extension BlueskyClient {
     /// `app.bsky.feed.getTimeline` — the home timeline as normalized feed items.
-    public func timeline(accessToken: String, cursor: String?, limit: Int = 50) async throws -> FeedPage {
+    public func timeline(auth: BlueskyAuth, cursor: String?, limit: Int = 50) async throws -> FeedPage {
         var components = URLComponents(url: pdsURL.appending(path: "xrpc/app.bsky.feed.getTimeline"), resolvingAgainstBaseURL: false)!
         components.queryItems = [URLQueryItem(name: "limit", value: String(limit))]
             + (cursor.map { [URLQueryItem(name: "cursor", value: $0)] } ?? [])
-        var request = URLRequest(url: components.url!)
-        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        let request = URLRequest(url: components.url!)
 
-        let (data, response) = try await timelineData(for: request)
+        let (data, response) = try await performAuthed(request, auth: auth)
         guard (200..<300).contains(response.statusCode) else {
             // AT Proto signals an expired/invalid access token with 400 ExpiredToken (not 401).
             // Map those to .invalidCredentials so the caller refreshes and retries.
@@ -23,22 +22,21 @@ extension BlueskyClient {
         let decoded: Timeline
         do { decoded = try JSONDecoder().decode(Timeline.self, from: data) }
         catch { throw BlueskyError.malformedResponse }
-        return FeedPage(items: decoded.feed.compactMap(\.feedItem), nextCursor: decoded.cursor)
+        return FeedPage(items: decoded.feed.compactMap { $0.value?.feedItem }, nextCursor: decoded.cursor)
     }
 
     /// `app.bsky.feed.getPostThread` — a post with its parent chain and nested replies.
     /// Flattened to every post in the conversation, chronological (oldest first).
-    public func postThread(accessToken: String, uri: String, depth: Int = 30) async throws -> PostThread {
+    public func postThread(auth: BlueskyAuth, uri: String, depth: Int = 30) async throws -> PostThread {
         var components = URLComponents(url: pdsURL.appending(path: "xrpc/app.bsky.feed.getPostThread"), resolvingAgainstBaseURL: false)!
         components.queryItems = [
             URLQueryItem(name: "uri", value: uri),
             URLQueryItem(name: "depth", value: String(depth)),
             URLQueryItem(name: "parentHeight", value: "40"),
         ]
-        var request = URLRequest(url: components.url!)
-        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        let request = URLRequest(url: components.url!)
 
-        let (data, response) = try await timelineData(for: request)
+        let (data, response) = try await performAuthed(request, auth: auth)
         guard (200..<300).contains(response.statusCode) else {
             if response.statusCode == 429 { throw BlueskyError.rateLimited }
             throw BlueskyError.server("Bluesky thread status \(response.statusCode).")
@@ -62,33 +60,19 @@ extension BlueskyClient {
     }
 
     /// `app.bsky.feed.getAuthorFeed` — a single user's posts. Same wire shape as the timeline.
-    public func authorFeed(accessToken: String, actor: String, cursor: String?, limit: Int = 40) async throws -> FeedPage {
+    public func authorFeed(auth: BlueskyAuth, actor: String, cursor: String?, limit: Int = 40) async throws -> FeedPage {
         var components = URLComponents(url: pdsURL.appending(path: "xrpc/app.bsky.feed.getAuthorFeed"), resolvingAgainstBaseURL: false)!
         components.queryItems = [URLQueryItem(name: "actor", value: actor), URLQueryItem(name: "limit", value: String(limit))]
             + (cursor.map { [URLQueryItem(name: "cursor", value: $0)] } ?? [])
-        var request = URLRequest(url: components.url!)
-        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        let request = URLRequest(url: components.url!)
 
-        let (data, response) = try await timelineData(for: request)
+        let (data, response) = try await performAuthed(request, auth: auth)
         guard (200..<300).contains(response.statusCode) else {
             if response.statusCode == 429 { throw BlueskyError.rateLimited }
             throw BlueskyError.server("Bluesky author feed status \(response.statusCode).")
         }
         guard let decoded = try? JSONDecoder().decode(Timeline.self, from: data) else { throw BlueskyError.malformedResponse }
-        return FeedPage(items: decoded.feed.compactMap(\.feedItem), nextCursor: decoded.cursor)
-    }
-
-    // Reuses the private URLSession via a tiny internal shim so decoding stays here.
-    private func timelineData(for request: URLRequest) async throws -> (Data, HTTPURLResponse) {
-        do {
-            let (data, response) = try await session.dataWithRateLimit(for: request)
-            guard let http = response as? HTTPURLResponse else { throw BlueskyError.malformedResponse }
-            return (data, http)
-        } catch let error as BlueskyError {
-            throw error
-        } catch {
-            throw BlueskyError.network
-        }
+        return FeedPage(items: decoded.feed.compactMap { $0.value?.feedItem }, nextCursor: decoded.cursor)
     }
 
     // MARK: - Wire format (only the fields we render)
@@ -97,19 +81,25 @@ extension BlueskyClient {
 
     private struct Timeline: Decodable {
         let cursor: String?
-        let feed: [FeedEntry]
+        // Lossy: one malformed entry deep in the timeline must not fail the whole page (and lose
+        // the cursor, stalling pagination there). Skip the bad ones, keep the rest (#214).
+        let feed: [FailableDecodable<FeedEntry>]
     }
 
     private struct FeedEntry: Decodable {
         let post: Post
         let reason: Reason?
+        /// Feed-level reply context: the parent/root PostViews (full content). Present when `post`
+        /// is a reply. Parent may be a not-found/blocked stub — those decode to nils and are skipped.
+        let reply: ReplyBlock?
 
         var feedItem: FeedItem? {
             // Order by timeline time: a repost's own time, else when the post was indexed —
             // NOT the original post's authored time (a repost of an old post must not sink).
             let orderString = reason?.indexedAt ?? post.indexedAt ?? post.record.createdAt
             guard let createdAt = ISO8601.date(from: orderString) else { return nil }
-            return post.makeFeedItem(orderDate: createdAt, repostedBy: reason?.by?.displayName)
+            return post.makeFeedItem(orderDate: createdAt, repostedBy: reason?.by?.displayName,
+                                     replyParent: reply?.parent?.replyRef)
         }
 
         static func attributed(from record: Record) -> AttributedString {
@@ -132,6 +122,19 @@ extension BlueskyClient {
         }
     }
 
+    private struct ReplyBlock: Decodable { let parent: ParentPost? }
+    private struct ParentPost: Decodable {
+        let uri: String?
+        let author: Author?
+        let record: ParentRecord?
+        var replyRef: ReplyRef? {
+            guard let uri, let author else { return nil } // not-found/blocked stub
+            return ReplyRef(authorName: author.displayName ?? author.handle, authorHandle: author.handle,
+                            snippet: record?.text ?? "", threadID: uri)
+        }
+    }
+    private struct ParentRecord: Decodable { let text: String? }
+
     private struct Post: Decodable {
         let uri: String
         let cid: String?
@@ -147,8 +150,9 @@ extension BlueskyClient {
             return URL(string: "https://bsky.app/profile/\(author.handle)/post/\(rkey)")
         }
 
-        func makeFeedItem(orderDate: Date, repostedBy: String?) -> FeedItem {
-            FeedItem(
+        func makeFeedItem(orderDate: Date, repostedBy: String?, replyParent: ReplyRef? = nil) -> FeedItem {
+            let imgs = (embed?.allImages ?? []).compactMap { img in URL(string: img.fullsize).map { ($0, img.aspect) } }
+            return FeedItem(
                 network: .bluesky,
                 rawId: uri,
                 authorID: author.did,
@@ -158,7 +162,8 @@ extension BlueskyClient {
                 createdAt: orderDate,
                 text: record.text,
                 attributedText: FeedEntry.attributed(from: record),
-                imageURLs: embed?.allImages?.compactMap { URL(string: $0.fullsize) } ?? [],
+                imageURLs: imgs.map(\.0),
+                imageAspects: imgs.map(\.1),
                 videos: embed?.anyVideo?.postVideo.map { [$0] } ?? [],
                 linkCard: (embed?.allImages?.isEmpty ?? true) ? embed?.anyExternal?.linkCard : nil,
                 repostedBy: repostedBy,
@@ -169,7 +174,8 @@ extension BlueskyClient {
                 isReply: record.reply != nil,
                 cid: cid,
                 replyRoot: record.reply?.root.map { PostRef(uri: $0.uri, cid: $0.cid) },
-                postURL: webURL
+                postURL: webURL,
+                replyParent: replyParent
             )
         }
 
@@ -262,6 +268,12 @@ extension BlueskyClient {
     }
     private struct EmbedImage: Decodable {
         let fullsize: String
+        let aspectRatio: AspectRatio?
+        var aspect: Double { aspectRatio?.value ?? 0 }
+    }
+    private struct AspectRatio: Decodable {
+        let width: Double; let height: Double
+        var value: Double { height > 0 ? width / height : 0 }
     }
     private struct ExternalEmbed: Decodable {
         let uri: String

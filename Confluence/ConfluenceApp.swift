@@ -10,6 +10,7 @@ struct ConfluenceApp: App {
     @State private var mastodon: MastodonAccountStore
     @State private var follows = FollowStore()
     @State private var notifications = NotificationStore()
+    @State private var dms = DMStore()
     @State private var search = SearchStore()
     @State private var composer = ComposerStore()
     @State private var postActions = PostActionStore()
@@ -21,7 +22,7 @@ struct ConfluenceApp: App {
         let uiTest = ProcessInfo.processInfo.arguments.contains("-uiTestLoggedOut")
         let blueskyStore: any SecureStore = uiTest ? EphemeralSecureStore() : Keychain(service: "com.dangahan.confluence.bluesky")
         let mastodonStore: any SecureStore = uiTest ? EphemeralSecureStore() : Keychain(service: "com.dangahan.confluence.mastodon")
-        _bluesky = State(initialValue: BlueskyAccountStore(keychain: blueskyStore))
+        _bluesky = State(initialValue: BlueskyAccountStore(keychain: blueskyStore, authenticator: WebAuthSession()))
         _mastodon = State(initialValue: MastodonAccountStore(authenticator: WebAuthSession(), keychain: mastodonStore))
     }
 
@@ -32,6 +33,7 @@ struct ConfluenceApp: App {
                 .environment(mastodon)
                 .environment(follows)
                 .environment(notifications)
+                .environment(dms)
                 .environment(search)
                 .environment(composer)
                 .environment(postActions)

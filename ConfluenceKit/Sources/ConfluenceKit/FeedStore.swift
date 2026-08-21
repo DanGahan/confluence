@@ -1,5 +1,8 @@
 import Foundation
 import Observation
+import os
+
+private let feedLog = Logger(subsystem: "com.dangahan.confluence", category: "feed")
 
 /// Fetches one page for a network given its cursor (nil = first page).
 public typealias PageFetcher = @Sendable (_ cursor: String?) async throws -> FeedPage
@@ -22,6 +25,13 @@ public final class FeedStore {
     private var reachedEnd: Set<Network> = []
     private var perNetwork: [Network: [FeedItem]] = [:]
 
+    /// Depth ceiling for infinite scroll. ponytail: every loaded post is held in memory and merged
+    /// on each page, so an unbounded deep scroll (a dense feed can page dozens of times to reach a
+    /// day back) eventually swamps the main thread and connection pool and the feed hangs. Stop
+    /// paginating at this many total items so it reaches a clean end instead. Tunable; the real
+    /// upgrade is windowing — evict off-screen pages so scroll is truly unbounded. See GAPS G17.
+    private static let maxLoadedItems = 2000
+
     public init() {}
 
     /// Active networks change when accounts are added/removed.
@@ -29,13 +39,43 @@ public final class FeedStore {
         self.fetchers = fetchers
     }
 
-    public var hasMore: Bool { fetchers.keys.contains { !reachedEnd.contains($0) } }
+    /// Whether more can load. With a `filter` (the currently-shown network), reflects only that
+    /// network — so a filtered view stops spinning once *it* is exhausted, even if the hidden
+    /// network still has pages (#214).
+    public func hasMore(for filter: Network? = nil) -> Bool {
+        if let filter { return fetchers.keys.contains(filter) && !reachedEnd.contains(filter) }
+        return fetchers.keys.contains { !reachedEnd.contains($0) }
+    }
+
+    /// Oldest (earliest) loaded post for a network, or nil if none loaded.
+    private func oldestLoaded(_ network: Network) -> Date? {
+        perNetwork[network]?.map(\.createdAt).min()
+    }
+
+    /// The timestamp above which the combined feed is provably complete: the *newest* of the
+    /// oldest-loaded posts across networks that still have pages (and haven't failed). Below it,
+    /// the shallowest stream hasn't been fetched yet, so a later page could interleave posts —
+    /// hence `combinedVisible` hides that region and `loadMore` pages that stream to catch up.
+    /// nil when nothing constrains completeness (all networks ended) → show everything.
+    private var completenessWatermark: Date? {
+        fetchers.keys
+            .filter { !reachedEnd.contains($0) && !failedNetworks.contains($0) }
+            .compactMap { oldestLoaded($0) }
+            .max()
+    }
+
+    /// The combined feed trimmed to the complete region (see `completenessWatermark`), so posts
+    /// from both networks always appear in true post order with nothing missing that an un-fetched
+    /// page would slot into the middle. Single-network (filtered) views use `items` directly.
+    public var combinedVisible: [FeedItem] {
+        guard let watermark = completenessWatermark else { return items }
+        return items.filter { $0.createdAt >= watermark }
+    }
 
     public func refresh() async {
         guard !isLoading else { return }
         isLoading = true
         defer { isLoading = false }
-        cursors = [:]; reachedEnd = []; perNetwork = [:]; failedNetworks = []; rateLimitedNetworks = []
 
         let active = Array(fetchers)
         let results = await withTaskGroup(of: (Network, Result<FeedPage, Error>).self) { group in
@@ -49,39 +89,94 @@ public final class FeedStore {
             for await result in group { acc.append(result) }
             return acc
         }
-        for (network, result) in results { apply(result, for: network, append: false) }
+        for (network, result) in results {
+            switch result {
+            case .success(let page):
+                // Fresh top-of-feed for this network: replace its items and reset its pagination.
+                perNetwork[network] = page.items
+                reachedEnd.remove(network); failedNetworks.remove(network); rateLimitedNetworks.remove(network)
+                if let cursor = page.nextCursor, !page.items.isEmpty { cursors[network] = cursor }
+                else { cursors[network] = nil; reachedEnd.insert(network) }
+            case .failure(let error):
+                // Don't blank a feed that was showing fine: keep this network's existing items and
+                // pagination on a failed refresh (e.g. a 429 from deep scrolling). Just flag it so
+                // the UI can surface the failure and the user can retry — no forced app restart.
+                if isRateLimitError(error) { rateLimitedNetworks.insert(network) }
+                else { failedNetworks.insert(network) }
+            }
+        }
+        // Forget any network that's no longer active (account removed) so it doesn't linger.
+        let activeKeys = Set(fetchers.keys)
+        perNetwork = perNetwork.filter { activeKeys.contains($0.key) }
+        cursors = cursors.filter { activeKeys.contains($0.key) }
+        reachedEnd.formIntersection(activeKeys)
+        failedNetworks.formIntersection(activeKeys)
+        rateLimitedNetworks.formIntersection(activeKeys)
         rebuild()
     }
 
-    public func loadMore() async {
-        guard !isLoading, hasMore else { return }
-        let candidates = fetchers.keys.filter { !reachedEnd.contains($0) && !failedNetworks.contains($0) }
-        // Extend whichever loaded stream currently ends newest — that's where the merge gap is.
-        guard let network = candidates.max(by: {
-            (perNetwork[$0]?.last?.createdAt ?? .distantPast) < (perNetwork[$1]?.last?.createdAt ?? .distantPast)
-        }), let fetcher = fetchers[network] else { return }
+    /// `filter` = the network currently shown (nil = combined). Filtered: paginate just that
+    /// network (#214). Combined: page the network(s) holding up the completeness watermark — the
+    /// shallowest still-loading stream — so older posts from BOTH networks descend into the visible
+    /// feed in true post order. Paging the already-deeper stream would just pile up hidden posts;
+    /// catching up the shallow one (extra calls to whichever is behind) is what fixes the "past a
+    /// point it's all one network" bug. Failed streams are retried (a timeout must not freeze it).
+    public func loadMore(preferring filter: Network? = nil) async {
+        guard !isLoading, hasMore(for: filter) else { return }
+        let targets: [Network]
+        if let filter {
+            targets = (fetchers.keys.contains(filter) && !reachedEnd.contains(filter)) ? [filter] : []
+        } else {
+            let active = fetchers.keys.filter { !reachedEnd.contains($0) }
+            let watermark = completenessWatermark
+            targets = active.filter { network in
+                if failedNetworks.contains(network) { return true }          // retry a failed stream
+                guard let oldest = oldestLoaded(network), let watermark else { return true } // (re)load empty
+                return oldest >= watermark                                   // shallowest → holds the watermark
+            }
+        }
+        guard !targets.isEmpty else { return }
 
         isLoading = true
         defer { isLoading = false }
-        do { apply(.success(try await fetcher(cursors[network])), for: network, append: true) }
-        catch { apply(.failure(error), for: network, append: true) }
-        rebuild()
-    }
-
-    private func apply(_ result: Result<FeedPage, Error>, for network: Network, append: Bool) {
-        switch result {
-        case .success(let page):
-            if append { perNetwork[network, default: []].append(contentsOf: page.items) }
-            else { perNetwork[network] = page.items }
-            if let cursor = page.nextCursor, !page.items.isEmpty { cursors[network] = cursor }
-            else { reachedEnd.insert(network) }
-            failedNetworks.remove(network)
-            rateLimitedNetworks.remove(network)
-        case .failure(let error):
-            if isRateLimitError(error) { rateLimitedNetworks.insert(network) }
-            else { failedNetworks.insert(network) }
-            reachedEnd.insert(network) // stop paginating a failed network until next refresh
+        let results = await withTaskGroup(of: (Network, Result<FeedPage, Error>).self) { group in
+            for network in targets {
+                let fetcher = fetchers[network]!, cursor = cursors[network]
+                group.addTask {
+                    do { return (network, .success(try await fetcher(cursor))) }
+                    catch { return (network, .failure(error)) }
+                }
+            }
+            var acc: [(Network, Result<FeedPage, Error>)] = []
+            for await result in group { acc.append(result) }
+            return acc
         }
+        for (network, result) in results {
+            switch result {
+            case .success(let page):
+                perNetwork[network, default: []].append(contentsOf: page.items)
+                failedNetworks.remove(network); rateLimitedNetworks.remove(network)
+                if let cursor = page.nextCursor, !page.items.isEmpty { cursors[network] = cursor }
+                else { reachedEnd.insert(network) }
+                feedLog.notice("loadMore \(network.rawValue, privacy: .public): +\(page.items.count) items, \(page.nextCursor == nil || page.items.isEmpty ? "end" : "more", privacy: .public)")
+            case .failure(let error):
+                // Transient (a timeout or blip): flag for the UI but keep the network eligible so
+                // the next scroll retries it. A one-off failure must not permanently freeze
+                // pagination — that's what left Bluesky silently stuck with no retry.
+                feedLog.error("loadMore \(network.rawValue, privacy: .public): failed — \(error.localizedDescription, privacy: .public)")
+                if isRateLimitError(error) { rateLimitedNetworks.insert(network) }
+                else { failedNetworks.insert(network) }
+            }
+        }
+        // Depth ceiling: once we're holding this many posts, stop paginating ALL networks together
+        // so the combined feed reaches a clean end rather than hanging (and doesn't degrade to a
+        // single-network tail). See `maxLoadedItems`.
+        let total = perNetwork.values.reduce(0) { $0 + $1.count }
+        if total >= Self.maxLoadedItems {
+            reachedEnd.formUnion(fetchers.keys)
+            feedLog.notice("loadMore: depth cap reached (\(total, privacy: .public) items) — pagination stopped")
+        }
+        rebuild()
     }
 
     private func rebuild() {
