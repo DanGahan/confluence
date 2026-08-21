@@ -4,6 +4,36 @@ This is the plan for repaying **G2 / #105**: migrating Bluesky auth from app
 passwords (which bypass 2FA and are on Bluesky's deprecation path) to ATProto
 OAuth. The work is split across several PRs to keep each reviewable.
 
+## Status: shipped (#105), hardened (#217)
+
+All three slices landed and are verified on device (feed, posting, replies, DMs
+over DPoP). Onboarding leads with OAuth; app password remains a fallback. The
+plan below is kept for context; the notable **deltas from the plan** are:
+
+- **Client identity.** `client_id` = `https://gahan.me.uk/confluence/oauth/client-metadata.json`,
+  served from the **`gh-pages`** branch via the custom domain (the `github.io`
+  URL 301-redirects, which breaks `client_id` resolution). Redirect URI is the
+  FQDN reversed *exactly*, single-slash per RFC 8252: `uk.me.gahan:/oauth-callback`.
+- **Scope.** `atproto transition:generic transition:chat.bsky` — the chat scope
+  is required for DMs (`chat.bsky.convo.*`). It must be listed in *both* the
+  request (`ATProtoOAuthClient.confluence.scope`) and the hosted metadata, or the
+  AS rejects the authorization with `invalid_scope`. Adding a scope needs re-auth.
+- **PDS routing.** Authed OAuth calls go to the account's own PDS (`pdsBaseURL` /
+  `blueskyClient()` on the store), not the bsky.social entryway — the DPoP token
+  is bound to the PDS and the proof's `htu` must match the host. Same reason chat
+  is routed to the resolved PDS.
+- **DPoP nonce caching (#211).** The server-issued `DPoP-Nonce` is cached
+  per-host in a `DPoPNonceStore` actor rather than re-doing the 401→retry dance
+  on every request, which raced under concurrency.
+- **Refresh lifecycle (#217).** Refresh is **coalesced** (one in-flight `Task`)
+  because the refresh token is single-use/rotating — concurrent refreshes race it
+  to a dead `invalid_grant`. A chat **403 `ScopeMissingError`** is treated as a
+  permission error (`chatUnavailable`), *not* an expiry, so it never triggers a
+  refresh (that churned the token on every DM poll). A genuinely dead token
+  (`invalid_grant`) clears the session and raises `sessionExpired` → a one-tap
+  re-auth banner (no silent renewal is possible — nothing is stored to renew
+  from). Refresh outcomes log at `.notice` under category `bluesky-auth`.
+
 ## Why it's more work than Mastodon's OAuth
 
 Mastodon is plain OAuth 2.0 authorization-code: register the app, open the

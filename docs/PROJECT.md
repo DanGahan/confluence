@@ -81,8 +81,8 @@ crash (integration-tested with garbage JSON).
 ### Stores (`@MainActor @Observable`, injected closures, all unit-tested)
 | Store | Owns |
 |---|---|
-| `FeedStore` | The merged feed: refresh (parallel task group per network), infinite scroll, per-network failure isolation |
-| `BlueskyAccountStore` / `MastodonAccountStore` | Auth lifecycle: login, session restore from Keychain on init, token refresh, logout |
+| `FeedStore` | The merged feed: non-destructive refresh (parallel task group per network — a failed refresh keeps the posts already shown), completeness-watermarked infinite scroll, per-network failure isolation |
+| `BlueskyAccountStore` / `MastodonAccountStore` | Auth lifecycle: login (app password **or** ATProto OAuth), session restore from Keychain on init, coalesced token refresh, dead-OAuth-session recovery, logout |
 | `ComposerStore` | Cross-post text/attachments/limits; per-network success tracking so a retry never double-posts |
 | `DraftStore` | Saved composer drafts (UserDefaults, no credentials) |
 | `FollowStore` / `PostActionStore` | Optimistic follow/repost/like/block with revert-on-failure |
@@ -101,26 +101,48 @@ fallback).
    session from its Keychain service (`com.dangahan.confluence.bluesky` /
    `.mastodon`) — corrupt/absent item just means logged out.
 2. `ContentView` shows onboarding if neither account exists, else `FeedView`.
-3. `FeedView` builds the closure sets (`makeFetchers`, `makeFollowActions`,
-   `makePostActions`, `makeNotificationFetchers`, `makeSearchFetchers`) and
-   hands them to the stores. **Token refresh lives inside these closures**: a
-   Bluesky fetcher catches `invalidCredentials`, calls
-   `BlueskyAccountStore.refresh()` (swap refresh JWT for new tokens, persist),
-   and retries once. AT Proto quirk: an expired access token comes back as
-   **HTTP 400 with `error: "ExpiredToken"`, not 401** — `BlueskyFeed` maps
-   400/ExpiredToken/InvalidToken/AuthenticationRequired all to
-   `invalidCredentials` so the retry triggers.
-4. `FeedStore.refresh()` fires all networks in a `withTaskGroup`, stores each
-   network's items separately (`perNetwork`), then `mergeFeeds` flattens:
-   de-dupe by ID, sort newest-first, tie-break by ID for determinism. One
-   network failing populates `failedNetworks` (a non-blocking banner) and
-   never blanks the other's posts.
-5. `loadMore()` paginates **whichever network's loaded stream currently ends
-   newest** — that's where the merge gap is. Cursors are per-network; a failed
-   network stops paginating until the next refresh.
-6. Rows render in a `ScrollView` + `LazyVStack` + `scrollTargetLayout`.
-   Scroll position is debounce-saved (750 ms) per feed-filter scope and
-   restored on launch if the post is still present and < 7 days old.
+3. `FeedView` builds the closure sets via `FeedWiring` (`pageFetchers`,
+   `followActions`, `postActions`, `notificationFetchers`, `searchFetchers`,
+   `dmActions`) and hands them to the stores. **Token refresh lives inside these
+   closures**, via `BlueskyAccountStore.withAuth { auth, did in … }`: it hands
+   `body` the right credential — `.bearer` for an app-password session, `.dpop`
+   for an OAuth session — and on `invalidCredentials` refreshes once and retries.
+   Refresh is **coalesced** (`coalescedRefresh` — one in-flight refresh `Task`):
+   ATProto rotates the refresh token on use, so a burst of concurrent 401s must
+   trigger exactly one refresh, or the losers race the single-use token to a dead
+   `invalid_grant`. AT Proto quirk: an expired access token comes back as **HTTP
+   400 with `error: "ExpiredToken"`, not 401** — mapped (with 401 / InvalidToken /
+   AuthenticationRequired) to `invalidCredentials` so the retry triggers. A
+   *permission* 403 (chat `ScopeMissingError`) is **not** an expiry — it maps to
+   `chatUnavailable` and never refreshes (else every DM poll would churn the
+   token). A genuinely dead OAuth refresh token (`invalid_grant`) can't be
+   renewed silently — the store clears the session and raises `sessionExpired`,
+   and the feed shows a one-tap "sign in again" banner (see Auth).
+4. `FeedStore.refresh()` fires all networks in a `withTaskGroup`, storing each
+   network's items separately (`perNetwork`), then `mergeFeeds` flattens: de-dupe
+   by ID, sort newest-first, tie-break by ID for determinism. It is
+   **non-destructive**: a network's posts are replaced only when its refetch
+   *succeeds*; on failure the previously loaded posts are kept and the network is
+   flagged (`failedNetworks` / `rateLimitedNetworks`, a non-blocking banner). A
+   failed refresh therefore never blanks a feed that was showing fine.
+5. `loadMore()` — infinite scroll — is **completeness-aware** so the combined
+   feed stays chronological with nothing missing. It renders only down to a
+   **completeness watermark** (`combinedVisible`): the newest of the oldest-loaded
+   posts across still-loading networks. Below that line the shallowest stream
+   hasn't been fetched, so a later page could interleave — those posts are held
+   back (kept in `items`, hidden from the combined view) until that stream pages
+   down to them. Combined `loadMore` pages exactly that shallowest network to
+   catch it up (equal *pages* ≠ equal *time depth*: Mastodon's pages reach
+   further back, so Bluesky needs extra calls). A single-network filter shows that
+   whole network (`items`, no watermark) and paginates just it (#214). Cursors are
+   per-network; a transient failure flags the network but keeps it **retryable**
+   (the next scroll retries) — only a nil cursor (real end) stops it.
+6. Rows render in a `ScrollView` + `LazyVStack` + `scrollTargetLayout`. Image
+   rows **reserve their height from the post's aspect ratio** before the image
+   loads (`PostImages`), so late-loading images in older posts don't shove the
+   viewport and make the feed jump (#196). Scroll position is debounce-saved
+   (750 ms) per feed-filter scope and restored on launch if the post is still
+   present and < 7 days old.
 7. **Live mode** (`FeedView.liveMode`, toolbar toggle) turns the feed into a
    ticker: a `.task(id: liveMode && scenePhase == .active)` loops `feed.refresh()`
    + `pinToTop()` every ~12s. Keying the task on that Bool means it stops when
@@ -131,11 +153,29 @@ fallback).
 
 ## Auth
 
-**Bluesky** — app password → `com.atproto.server.createSession` → access +
-refresh JWTs, persisted as one JSON blob in Keychain. Refresh via
-`refreshSession`. 2FA accounts get a tailored error pointing at app passwords
-(which bypass 2FA). `// ponytail:` ATProto OAuth is the upgrade path when
-Bluesky deprecates app passwords.
+**Bluesky** — two sign-in paths; onboarding leads with OAuth, app password is a
+fallback.
+
+- **ATProto OAuth (preferred, #105).** PKCE + PAR + DPoP; client metadata is
+  hosted at a public URL that *is* the `client_id`. Sign-in persists an
+  `ATProtoOAuthSession` (DID, access + rotating refresh token, DPoP private key,
+  the account's **PDS** URL, token endpoint). Authed calls sign a per-request
+  DPoP proof (`.dpop`) and go to the account's own PDS — not the bsky.social
+  entryway — because the DPoP token is bound to it. Scope is
+  `atproto transition:generic transition:chat.bsky` (the chat scope is what makes
+  DMs work; it must match the hosted metadata or sign-in fails `invalid_scope`).
+  Full deep-dive: `docs/ATPROTO_OAUTH.md`.
+- **App password (fallback)** → `com.atproto.server.createSession` → access +
+  refresh JWTs (`.bearer`), refreshed via `refreshSession`. 2FA accounts get a
+  tailored error pointing at app passwords (which bypass 2FA).
+
+Both paths share `withAuth` / `coalescedRefresh` (above). A dead OAuth refresh
+token can't be renewed silently (OAuth keeps no reusable secret, unlike an app
+password), so on `invalid_grant` the store clears the session and raises
+`sessionExpired`; the feed surfaces a "Your Bluesky sign-in expired — sign in
+again" banner that reopens the OAuth flow. Refresh outcomes are logged at
+`.notice` (subsystem `com.dangahan.confluence`, category `bluesky-auth`) —
+no secrets — so the refresh cadence/cause is visible after the fact.
 
 **Mastodon** — user types an instance domain (validated against
 `/api/v1/instance` before anything opens), app self-registers via
