@@ -27,25 +27,23 @@ enum DuoSecondaryPanel: String, CaseIterable {
     }
 }
 
-/// Adaptive root for iOS: regular horizontal + compact vertical (Duo unfolded in landscape, or
-/// Plus/Max in landscape) renders a 50/50 split with the primary feed on the right and a
-/// configurable secondary panel on the left. Portrait on the Duo inner screen gives regular H +
-/// regular V and correctly falls through to single-column. iPad and macOS are unaffected.
+/// Adaptive root for iOS: regular horizontal size class on a phone (Duo inner screen open,
+/// or Plus/Max) renders a 50/50 split with the primary feed on the right and a configurable
+/// secondary panel on the left. The front (folded) screen and compact-H phones always get
+/// single-column. iPad is gated out at runtime; macOS is unaffected.
 ///
 /// GeometryReader + ignoresSafeArea(.container, .horizontal) ensures the Divider aligns with
 /// the physical crease regardless of safe-area insets on either side.
 struct DuoLayout: View {
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-    @Environment(\.verticalSizeClass) private var verticalSizeClass
     #endif
     @AppStorage("duo.secondaryPanel") private var panel: DuoSecondaryPanel = .dms
 
     var body: some View {
         #if os(iOS)
         if UIDevice.current.userInterfaceIdiom == .phone,
-           horizontalSizeClass == .regular,
-           verticalSizeClass == .compact {
+           horizontalSizeClass == .regular {
             GeometryReader { geo in
                 HStack(spacing: 0) {
                     DuoSecondaryPanelView(panel: panel)

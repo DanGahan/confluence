@@ -39,7 +39,6 @@ struct FeedView: View {
     #if !os(macOS)
     @State private var showingSettings = false // iOS has no Settings scene; reach it from the toolbar
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-    @Environment(\.verticalSizeClass) private var verticalSizeClass
     #endif
     @State private var networkFilter: FeedFilter = .both
     @State private var ownFeedScope: OwnFeedScope?
@@ -359,7 +358,6 @@ struct FeedView: View {
     private var isDuoLandscape: Bool {
         UIDevice.current.userInterfaceIdiom == .phone
             && horizontalSizeClass == .regular
-            && verticalSizeClass == .compact
     }
 
     /// iPhone toolbar. In standard compact layout: search + notifications + "…" overflow.
