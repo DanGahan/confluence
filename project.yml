@@ -4,8 +4,8 @@ name: Confluence
 options:
   bundleIdPrefix: com.dangahan.confluence
   deploymentTarget:
-    macOS: "26.0"
-    iOS: "26.0"
+    macOS: "27.0"
+    iOS: "27.1"
   createIntermediateGroups: true
 
 packages:

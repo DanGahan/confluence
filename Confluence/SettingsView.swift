@@ -37,6 +37,9 @@ struct SettingsView: View {
                 Section("Browsing") {
                     Toggle("Open links in app", isOn: $openLinksInApp)
                 }
+                if UIDevice.current.userInterfaceIdiom == .phone {
+                    DuoLayoutSettings()
+                }
             }
             .navigationTitle("Settings")
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
@@ -180,3 +183,25 @@ private struct AppearanceSettings: View {
         return s
     }
 }
+
+// MARK: - Duo Layout (iPhone only)
+
+#if os(iOS)
+private struct DuoLayoutSettings: View {
+    @AppStorage("duo.secondaryPanel") private var panel: DuoSecondaryPanel = .dms
+
+    var body: some View {
+        Section {
+            Picker("Left column", selection: $panel) {
+                ForEach(DuoSecondaryPanel.allCases, id: \.self) { option in
+                    Label(option.label, systemImage: option.systemImage).tag(option)
+                }
+            }
+        } header: {
+            Text("Duo Layout")
+        } footer: {
+            Text("Shown in the left column when iPhone is unfolded or held in landscape on a large screen.")
+        }
+    }
+}
+#endif

@@ -38,6 +38,7 @@ struct FeedView: View {
     @State private var showingComposer = false
     #if !os(macOS)
     @State private var showingSettings = false // iOS has no Settings scene; reach it from the toolbar
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     #endif
     @State private var networkFilter: FeedFilter = .both
     @State private var ownFeedScope: OwnFeedScope?
@@ -247,7 +248,15 @@ struct FeedView: View {
         .focusedSceneValue(\.availableOwnScopes, OwnFeedScope.available(bluesky: bluesky.isLoggedIn, mastodon: mastodon.isLoggedIn))
         .sheet(item: $ownFeedScope) { OwnFeedView(scope: $0) }
         .overlay(alignment: .bottom) { followToast }
-        .overlay(alignment: .bottomTrailing) { composeButton }
+        .overlay(alignment: .bottomTrailing) {
+            #if os(iOS)
+            // In Duo landscape the compose button moves into the bottom toolbar (see feedToolbarIOS)
+            // so it doesn't float over content in the right column.
+            if !isDuoLandscape { composeButton }
+            #else
+            composeButton
+            #endif
+        }
         #if os(macOS)
         .toolbar { feedToolbar }
         #else
@@ -352,11 +361,17 @@ struct FeedView: View {
     }
 
     #if !os(macOS)
-    /// iPhone-fit toolbar: a couple of primary buttons plus an overflow menu, so everything
-    /// stays reachable within the nav bar's limited width. Compose stays the floating button.
+    /// True when the device is a phone in wide landscape (Duo unfolded or Plus/Max landscape).
+    /// Used to promote extra buttons out of the "…" overflow and take advantage of the wider nav bar.
+    private var isDuoLandscape: Bool {
+        UIDevice.current.userInterfaceIdiom == .phone
+            && horizontalSizeClass == .regular
+    }
+
+    /// iPhone toolbar. In standard compact layout: search + notifications + "…" overflow.
+    /// In duo landscape (wider right column): live mode and refresh are promoted to direct
+    /// buttons; the "…" retains secondary actions only.
     @ToolbarContentBuilder private var feedToolbarIOS: some ToolbarContent {
-        // Dedicated network-filter button (person.2 for combined, person for a single network),
-        // matching macOS — in the slot Settings vacated (#188).
         ToolbarItem(placement: .topBarLeading) {
             Menu {
                 if bothConnected {
@@ -374,7 +389,6 @@ struct FeedView: View {
             }
             .accessibilityLabel(filterHelp)
         }
-        // Tap the feed title to scroll to top (#189).
         ToolbarItem(placement: .principal) {
             Button { scrollToTop() } label: {
                 Text(networkFilter.title).font(.headline).foregroundStyle(.primary)
@@ -390,33 +404,88 @@ struct FeedView: View {
                 Image(systemName: notifications.unreadCount > 0 ? "bell.badge.fill" : "bell")
                     .overlay(alignment: .topTrailing) { unreadBadge }
             }
-            .accessibilityLabel(notifications.unreadCount > 0 ? "Notifications, \(notifications.unreadCount) unread" : "Notifications")
+            .accessibilityLabel(notifications.unreadCount > 0
+                ? "Notifications, \(notifications.unreadCount) unread" : "Notifications")
         }
-        ToolbarItem(placement: .topBarTrailing) {
-            Menu {
-                Section {
-                    Button { liveMode.toggle() } label: {
-                        Label(liveMode ? "Turn Off Live Mode" : "Live Mode",
-                              systemImage: liveMode ? "dot.radiowaves.left.and.right" : "dot.radiowaves.right")
+        if isDuoLandscape {
+            // Promoted: refresh and live mode become direct buttons in the wider nav bar.
+            if !liveMode {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { Task { await feed.refresh() } } label: {
+                        Image(systemName: "arrow.clockwise")
                     }
-                    if !liveMode {
-                        Button { Task { await feed.refresh() } } label: { Label("Refresh", systemImage: "arrow.clockwise") }
-                    }
-                    if isScrolledAway && !liveMode {
-                        Button { scrollToTop() } label: { Label("Scroll to Top", systemImage: "arrow.up.to.line") }
-                    }
+                    .accessibilityLabel("Refresh")
                 }
-                Section {
-                    Button { showingMentions = true } label: { Label("Mentions", systemImage: "at") }
-                    Button { showingDMs = true } label: {
-                        Label(dms.unreadCount > 0 ? "Messages (\(dms.unreadCount))" : "Messages", systemImage: "envelope")
-                    }
-                    Button { showingSettings = true } label: { Label("Settings", systemImage: "gearshape") }
-                }
-            } label: {
-                Image(systemName: "ellipsis.circle")
             }
-            .accessibilityLabel("More")
+            ToolbarItem(placement: .topBarTrailing) {
+                Button { liveMode.toggle() } label: {
+                    Image(systemName: liveMode ? "dot.radiowaves.left.and.right" : "dot.radiowaves.right")
+                        .symbolEffect(.variableColor.iterative, isActive: liveMode)
+                        .foregroundStyle(liveMode ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary))
+                }
+                .accessibilityLabel("Live mode")
+                .accessibilityValue(liveMode ? "On" : "Off")
+            }
+            // Slim overflow: secondary actions only.
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    if isScrolledAway && !liveMode {
+                        Button { scrollToTop() } label: {
+                            Label("Scroll to Top", systemImage: "arrow.up.to.line")
+                        }
+                    }
+                    Section {
+                        Button { showingMentions = true } label: { Label("Mentions", systemImage: "at") }
+                        Button { showingDMs = true } label: {
+                            Label(dms.unreadCount > 0 ? "Messages (\(dms.unreadCount))" : "Messages",
+                                  systemImage: "envelope")
+                        }
+                        Button { showingSettings = true } label: { Label("Settings", systemImage: "gearshape") }
+                    }
+                } label: { Image(systemName: "ellipsis.circle") }
+                .accessibilityLabel("More")
+            }
+            // Compose moves out of the floating overlay and into the bottom toolbar so it
+            // doesn't obscure feed content in the right column.
+            ToolbarItemGroup(placement: .bottomBar) {
+                Spacer()
+                Button { showingComposer = true } label: {
+                    Image(systemName: "square.and.pencil")
+                        .font(.system(size: 18, weight: .semibold))
+                }
+                .accessibilityLabel("New Post")
+            }
+        } else {
+            // Compact overflow — everything in "…".
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Section {
+                        Button { liveMode.toggle() } label: {
+                            Label(liveMode ? "Turn Off Live Mode" : "Live Mode",
+                                  systemImage: liveMode ? "dot.radiowaves.left.and.right" : "dot.radiowaves.right")
+                        }
+                        if !liveMode {
+                            Button { Task { await feed.refresh() } } label: {
+                                Label("Refresh", systemImage: "arrow.clockwise")
+                            }
+                        }
+                        if isScrolledAway && !liveMode {
+                            Button { scrollToTop() } label: {
+                                Label("Scroll to Top", systemImage: "arrow.up.to.line")
+                            }
+                        }
+                    }
+                    Section {
+                        Button { showingMentions = true } label: { Label("Mentions", systemImage: "at") }
+                        Button { showingDMs = true } label: {
+                            Label(dms.unreadCount > 0 ? "Messages (\(dms.unreadCount))" : "Messages",
+                                  systemImage: "envelope")
+                        }
+                        Button { showingSettings = true } label: { Label("Settings", systemImage: "gearshape") }
+                    }
+                } label: { Image(systemName: "ellipsis.circle") }
+                .accessibilityLabel("More")
+            }
         }
     }
     #endif
