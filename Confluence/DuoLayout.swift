@@ -28,12 +28,11 @@ enum DuoSecondaryPanel: String, CaseIterable {
 }
 
 /// Adaptive root for iOS: regular horizontal size class on a phone (Duo inner screen open,
-/// or Plus/Max) renders a 50/50 split with the primary feed on the right and a configurable
-/// secondary panel on the left. The front (folded) screen and compact-H phones always get
-/// single-column. iPad is gated out at runtime; macOS is unaffected.
-///
-/// GeometryReader + ignoresSafeArea(.container, .horizontal) ensures the Divider aligns with
-/// the physical crease regardless of safe-area insets on either side.
+/// or Plus/Max) indicates a wide display that warrants a split view. Within that, geometry
+/// (width > height) determines landscape vs portrait — the Duo's inner screen reports
+/// .regular verticalSizeClass in both orientations so size-class alone can't distinguish them.
+/// Landscape → 50/50 dual pane; portrait → single column. Front screen and compact-H phones
+/// always get single-column. iPad is gated out at runtime; macOS is unaffected.
 struct DuoLayout: View {
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -44,13 +43,20 @@ struct DuoLayout: View {
         #if os(iOS)
         if UIDevice.current.userInterfaceIdiom == .phone,
            horizontalSizeClass == .regular {
+            // horizontalSizeClass gates the inner screen being open. Within that, we use
+            // geometry (width > height) to detect landscape vs portrait because the Duo's
+            // inner display reports .regular verticalSizeClass in both orientations.
             GeometryReader { geo in
-                HStack(spacing: 0) {
-                    DuoSecondaryPanelView(panel: panel)
-                        .frame(width: geo.size.width / 2)
-                    Divider()
+                if geo.size.width > geo.size.height {
+                    HStack(spacing: 0) {
+                        DuoSecondaryPanelView(panel: panel)
+                            .frame(width: geo.size.width / 2)
+                        Divider()
+                        FeedView()
+                            .frame(width: geo.size.width / 2)
+                    }
+                } else {
                     FeedView()
-                        .frame(width: geo.size.width / 2)
                 }
             }
             .ignoresSafeArea(.container, edges: .horizontal)
