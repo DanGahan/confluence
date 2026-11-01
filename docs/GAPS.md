@@ -29,6 +29,8 @@ authoritative in-place markers), the SPEC, and open bug issues. When you add a
 | G17 | Feed depth is capped at 2000 loaded posts (`FeedStore.maxLoadedItems`) — every loaded post is held in memory and re-merged per page, so an unbounded deep scroll (a dense feed pages dozens of times to reach a day back) swamps the main thread + connection pool and the feed hangs. The cap stops pagination at a clean end instead. | `FeedStore.swift` | Windowing — evict off-screen pages so scroll is truly unbounded (keeps a sliding window in memory, refetches on scroll-up) |
 | G15 | Quick reply: (a) no optimistic insert — box collapses on success, next refresh shows the reply; (b) single-line field — a vertical-growth `TextField` inside the LazyVStack row explodes `sizeThatFits` and beachballs, so the field is fixed-height. (Character counter repaid: Bluesky 300 hard cap, Mastodon 500 soft guide.) | `QuickReply.swift` | (a) if users want the reply to appear instantly; (b) multiline needs a fixed-frame `TextEditor`, never `axis: .vertical`, in the lazy row |
 
+| G18 | Duo secondary panels: Search, Bluesky feed, and Mastodon feed show a "coming soon" placeholder in the left column. DMs is fully inline; the others need dedicated inline views before they can be enabled. | `DuoLayout.swift` (`DuoSecondaryPanelView`) | Search: refactor `SearchView` for inline embedding. Filtered feeds: share a single `FeedStore` between columns (two `FeedStore` instances would double network load and state). |
+
 ## Structural debt
 
 | # | Gap | Where | Repay when |

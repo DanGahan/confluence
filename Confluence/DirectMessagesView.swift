@@ -3,41 +3,57 @@ import ConfluenceKit
 
 /// Unified DM inbox (F15): conversations across both networks, most-recent first. Tap one to open
 /// its thread. Mastodon conversations are flagged not-private.
+///
+/// Pass `isInline: true` when embedding in the Duo split layout — omits the NavigationStack
+/// wrapper and Done button so the parent NavigationStack handles navigation.
 struct DirectMessagesView: View {
+    var isInline: Bool = false
     @Environment(DMStore.self) private var dms
     @Environment(BlueskyAccountStore.self) private var bluesky
     @Environment(\.dismiss) private var dismiss
     @State private var selected: Conversation?
 
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-                // A Bluesky chat failure needs different guidance per sign-in type: an app password
-                // needs DM access ticked; an OAuth session needs reconnecting to grant the chat scope.
-                if dms.failedNetworks.contains(.bluesky) {
-                    if bluesky.isOAuth { blueskyOAuthChatHint } else { blueskyChatHint }
-                }
-                if dms.conversations.isEmpty {
-                    ContentUnavailableView("No Messages", systemImage: "envelope",
-                        description: Text(dms.isLoading
-                            ? "Loading…"
-                            : "Your Bluesky and Mastodon direct messages will appear here."))
-                        .frame(maxHeight: .infinity)
-                } else {
-                    List(dms.conversations) { convo in
-                        Button { selected = convo } label: { ConversationRow(conversation: convo) }
-                            .buttonStyle(.plain)
+        if isInline {
+            dmContent
+        } else {
+            NavigationStack {
+                dmContent
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Done") { dismiss() }
+                        }
                     }
-                    .listStyle(.inset)
-                }
             }
-            .navigationTitle("Messages")
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
-            .navigationDestination(item: $selected) { ConversationView(conversation: $0) }
+            #if os(macOS)
+            .frame(minWidth: 420, minHeight: 520)
+            #endif
         }
-        #if os(macOS)
-        .frame(minWidth: 420, minHeight: 520)
-        #endif
+    }
+
+    private var dmContent: some View {
+        VStack(spacing: 0) {
+            // A Bluesky chat failure needs different guidance per sign-in type: an app password
+            // needs DM access ticked; an OAuth session needs reconnecting to grant the chat scope.
+            if dms.failedNetworks.contains(.bluesky) {
+                if bluesky.isOAuth { blueskyOAuthChatHint } else { blueskyChatHint }
+            }
+            if dms.conversations.isEmpty {
+                ContentUnavailableView("No Messages", systemImage: "envelope",
+                    description: Text(dms.isLoading
+                        ? "Loading…"
+                        : "Your Bluesky and Mastodon direct messages will appear here."))
+                    .frame(maxHeight: .infinity)
+            } else {
+                List(dms.conversations) { convo in
+                    Button { selected = convo } label: { ConversationRow(conversation: convo) }
+                        .buttonStyle(.plain)
+                }
+                .listStyle(.inset)
+            }
+        }
+        .navigationTitle("Messages")
+        .navigationDestination(item: $selected) { ConversationView(conversation: $0) }
         .task { await dms.refresh() }
     }
 

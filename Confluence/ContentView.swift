@@ -21,7 +21,7 @@ struct ContentView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .accessibilityLabel("Restoring accounts")
             } else if anyLoggedIn || UITestLaunch.mockFeed {
-                FeedView()
+                DuoLayout()
             } else {
                 ContentUnavailableView {
                     Label("No Accounts", systemImage: "person.crop.circle.badge.plus")
