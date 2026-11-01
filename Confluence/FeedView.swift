@@ -248,7 +248,15 @@ struct FeedView: View {
         .focusedSceneValue(\.availableOwnScopes, OwnFeedScope.available(bluesky: bluesky.isLoggedIn, mastodon: mastodon.isLoggedIn))
         .sheet(item: $ownFeedScope) { OwnFeedView(scope: $0) }
         .overlay(alignment: .bottom) { followToast }
-        .overlay(alignment: .bottomTrailing) { composeButton }
+        .overlay(alignment: .bottomTrailing) {
+            #if os(iOS)
+            // In Duo landscape the compose button moves into the bottom toolbar (see feedToolbarIOS)
+            // so it doesn't float over content in the right column.
+            if !isDuoLandscape { composeButton }
+            #else
+            composeButton
+            #endif
+        }
         #if os(macOS)
         .toolbar { feedToolbar }
         #else
@@ -436,6 +444,16 @@ struct FeedView: View {
                     }
                 } label: { Image(systemName: "ellipsis.circle") }
                 .accessibilityLabel("More")
+            }
+            // Compose moves out of the floating overlay and into the bottom toolbar so it
+            // doesn't obscure feed content in the right column.
+            ToolbarItemGroup(placement: .bottomBar) {
+                Spacer()
+                Button { showingComposer = true } label: {
+                    Image(systemName: "square.and.pencil")
+                        .font(.system(size: 18, weight: .semibold))
+                }
+                .accessibilityLabel("New Post")
             }
         } else {
             // Compact overflow — everything in "…".
