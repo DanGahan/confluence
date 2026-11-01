@@ -2,6 +2,9 @@ import SwiftUI
 import ConfluenceKit
 
 struct SearchView: View {
+    /// Pass `true` when embedding in the Duo split layout — omits the close button so the
+    /// parent NavigationStack handles navigation context.
+    var isInline: Bool = false
     @Environment(SearchStore.self) private var search
     @Environment(FollowStore.self) private var follows
     @Environment(\.dismiss) private var dismiss
@@ -14,11 +17,13 @@ struct SearchView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                SheetCloseButton { dismiss() }
-                Spacer()
+            if !isInline {
+                HStack {
+                    SheetCloseButton { dismiss() }
+                    Spacer()
+                }
+                .padding([.horizontal, .top])
             }
-            .padding([.horizontal, .top])
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
                 TextField("Search Bluesky and Mastodon", text: $query)
@@ -47,8 +52,12 @@ struct SearchView: View {
         #if os(macOS)
         .frame(minWidth: 420, minHeight: 520)
         #endif
+        .navigationTitle("Search")
+        #if os(iOS)
+        .navigationBarTitleDisplayMode(.inline)
+        #endif
         .handleProfileLinks()
-        .onAppear { fieldFocused = true }
+        .onAppear { if !isInline { fieldFocused = true } }
         .onDisappear { search.clear() } // results aren't kept; recents are (persisted separately)
     }
 
